@@ -58,21 +58,44 @@ static std::string urlEncode(const std::string& s) {
 
 // --- Minimal JSON field extraction ---
 
+// Returns index of the start of the value for 'key', or npos.
+// Handles optional whitespace between ':' and value ("key": "v" and "key":"v" both work).
+// Search starts at 'offset'.
+static size_t jsonFindValue(const std::string& json, const std::string& key, size_t offset = 0) {
+    const std::string needle = "\"" + key + "\"";
+    auto pos = json.find(needle, offset);
+    if (pos == std::string::npos) return std::string::npos;
+    pos += needle.size();
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) ++pos;
+    if (pos >= json.size() || json[pos] != ':') return std::string::npos;
+    ++pos;
+    while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) ++pos;
+    return pos;
+}
+
 static std::string jsonGetString(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\":\"";
-    const auto pos = json.find(needle);
-    if (pos == std::string::npos) return "";
-    const auto start = pos + needle.size();
+    const auto pos = jsonFindValue(json, key);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '"') return "";
+    const auto start = pos + 1;
+    const auto end = json.find('"', start);
+    if (end == std::string::npos) return "";
+    return json.substr(start, end - start);
+}
+
+// Like jsonGetString but searches starting from 'offset' — used to skip nested objects.
+static std::string jsonGetStringFrom(const std::string& json, const std::string& key, size_t offset) {
+    const auto pos = jsonFindValue(json, key, offset);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '"') return "";
+    const auto start = pos + 1;
     const auto end = json.find('"', start);
     if (end == std::string::npos) return "";
     return json.substr(start, end - start);
 }
 
 static long jsonGetLong(const std::string& json, const std::string& key) {
-    const std::string needle = "\"" + key + "\":";
-    const auto pos = json.find(needle);
+    const auto pos = jsonFindValue(json, key);
     if (pos == std::string::npos) return 0;
-    return strtol(json.c_str() + pos + needle.size(), nullptr, 10);
+    return strtol(json.c_str() + pos, nullptr, 10);
 }
 
 // --- curl write callback ---
@@ -80,6 +103,48 @@ static long jsonGetLong(const std::string& json, const std::string& key) {
 static size_t curlWrite(void* ptr, size_t size, size_t nmemb, std::string* out) {
     out->append(static_cast<char*>(ptr), size * nmemb);
     return size * nmemb;
+}
+
+// --- JSON object/array helpers ---
+
+// Returns index one past the closing bracket of the object/array starting at 'start'
+static size_t jsonSkipValue(const std::string& json, size_t start) {
+    if (start >= json.size()) return start;
+    const char open  = json[start];
+    const char close = (open == '{') ? '}' : (open == '[') ? ']' : '\0';
+    if (!close) return start + 1;
+    int depth = 0;
+    for (size_t i = start; i < json.size(); ++i) {
+        if (json[i] == open)  ++depth;
+        else if (json[i] == close) {
+            if (--depth == 0) return i + 1;
+        }
+    }
+    return json.size();
+}
+
+// Returns inner content of the first matching JSON object value for 'key'.
+// Tolerates whitespace around ':' ("key": { and "key":{ both work).
+static std::string jsonGetObject(const std::string& json, const std::string& key) {
+    const auto pos = jsonFindValue(json, key);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '{') return "";
+    const auto end = jsonSkipValue(json, pos);
+    return json.substr(pos + 1, end - pos - 2);
+}
+
+// Returns the "name" field of the first object in a JSON array for 'key'.
+// Searches from 'offset' so callers can skip over nested arrays with the same key name.
+static std::string jsonFirstArrayItemName(const std::string& json,
+                                          const std::string& key,
+                                          size_t offset = 0) {
+    const auto pos = jsonFindValue(json, key, offset);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '[') return "";
+    size_t arrStart = pos + 1;
+    while (arrStart < json.size() && json[arrStart] != '{' && json[arrStart] != ']') ++arrStart;
+    if (arrStart >= json.size() || json[arrStart] == ']') return "";
+    const auto end = jsonSkipValue(json, arrStart);
+    const auto firstObj = json.substr(arrStart + 1, end - arrStart - 2);
+    return jsonGetString(firstObj, "name");
 }
 
 // --- HTTP POST to Spotify API ---
@@ -114,6 +179,36 @@ static std::string httpPost(const std::string& url, const std::string& body) {
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     debugLog("HTTP: done");
+    return response;
+}
+
+// --- HTTP GET to Spotify API ---
+
+static std::string httpGet(const std::string& url, const std::string& accessToken) {
+    CURL* curl = curl_easy_init();
+    if (!curl) { debugLog("HTTP GET: curl_easy_init returned null"); return ""; }
+
+    std::string response;
+    struct curl_slist* headers = nullptr;
+    const std::string authHeader = "Authorization: Bearer " + accessToken;
+    headers = curl_slist_append(headers, authHeader.c_str());
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+
+    const CURLcode res = curl_easy_perform(curl);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "HTTP GET: res=%d len=%d", (int)res, (int)response.size());
+    debugLog(buf);
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
     return response;
 }
 
@@ -202,6 +297,60 @@ Tokens refreshAccessToken(const std::string& existingRefreshToken) {
 
     const auto expiresIn = jsonGetLong(response, "expires_in");
     return Tokens(at, rt, static_cast<long>(time(nullptr)) + expiresIn);
+}
+
+PlayerState getPlayerState(const std::string& accessToken) {
+    debugLog("PLAYER: fetching /me/player");
+    const auto resp = httpGet("https://api.spotify.com/v1/me/player", accessToken);
+    PlayerState state;
+    if (resp.size() < 10) {
+        // HTTP 204 = no active device, or network error
+        debugLog("PLAYER: empty/short response (204 or error)");
+        return state;
+    }
+
+    const auto deviceObj = jsonGetObject(resp, "device");
+    state.deviceName = jsonGetString(deviceObj, "name");
+
+    const auto itemObj = jsonGetObject(resp, "item");
+
+    // The item object has this structure (order matters):
+    //   "album": { ..., "artists": [...], "name": "Album Name", ... },
+    //   "artists": [ {"name": "Artist"}, ... ],   <- track artists
+    //   ...
+    //   "name": "Track Name",                     <- track name (comes last)
+    //
+    // We must skip past album (and its nested artists) before searching for
+    // the track-level "artists" and "name" fields.
+
+    size_t afterAlbum = 0;
+    {
+        const auto albumValuePos = jsonFindValue(itemObj, "album");
+        if (albumValuePos != std::string::npos && albumValuePos < itemObj.size() && itemObj[albumValuePos] == '{')
+            afterAlbum = jsonSkipValue(itemObj, albumValuePos);
+    }
+
+    state.artistName = jsonFirstArrayItemName(itemObj, "artists", afterAlbum);
+
+    // Track name comes after both album and artists — skip artists array too.
+    size_t afterArtists = afterAlbum;
+    {
+        const auto artistsValuePos = jsonFindValue(itemObj, "artists", afterAlbum);
+        if (artistsValuePos != std::string::npos && artistsValuePos < itemObj.size() && itemObj[artistsValuePos] == '[')
+            afterArtists = jsonSkipValue(itemObj, artistsValuePos);
+    }
+    state.trackName = jsonGetStringFrom(itemObj, "name", afterArtists);
+
+    state.isPlaying = (resp.find("\"is_playing\":true") != std::string::npos);
+    state.valid = !state.trackName.empty();
+
+    char buf[256];
+    snprintf(buf, sizeof(buf), "PLAYER: track='%s' artist='%s' device='%s' playing=%d",
+             state.trackName.c_str(), state.artistName.c_str(),
+             state.deviceName.c_str(), (int)state.isPlaying);
+    debugLog(buf);
+
+    return state;
 }
 
 } // namespace spotify

@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <DebugLog.hpp>
 #include <cstdio>
+#include <ctime>
 
 // Returns the Switch's local IP, or empty string if not connected to a network.
 // Connects a UDP socket to an external address (no packet sent) so the kernel
@@ -48,6 +49,8 @@ static std::string encodeIp(const std::string& ip) {
     return out;
 }
 
+static constexpr time_t REFRESH_INTERVAL_SECS = 5;
+
 // --- MainLayout ---
 
 MainLayout::MainLayout() : Layout::Layout() {
@@ -65,14 +68,52 @@ MainLayout::MainLayout() : Layout::Layout() {
     this->statusText->SetX(960 - 250);
     this->Add(this->statusText);
 
+    this->trackText = pu::ui::elm::TextBlock::New(200, 430, "");
+    this->trackText->SetColor(pu::ui::Color(255, 255, 255, 255));
+    this->trackText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->trackText);
+
+    this->deviceText = pu::ui::elm::TextBlock::New(200, 510, "");
+    this->deviceText->SetColor(pu::ui::Color(150, 150, 150, 255));
+    this->deviceText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->Add(this->deviceText);
+
     auto hint = pu::ui::elm::TextBlock::New(960 - 120, 1030, "Pulsa + para salir");
     hint->SetColor(pu::ui::Color(100, 100, 100, 255));
     hint->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
     this->Add(hint);
+
+    this->AddRenderCallback([this]() { this->OnRenderCallback(); });
+}
+
+void MainLayout::OnRenderCallback() {
+    if (!this->refreshCallback) return;
+    const time_t now = time(nullptr);
+    if (now - this->lastRefresh < REFRESH_INTERVAL_SECS) return;
+    this->lastRefresh = now;
+    this->refreshCallback();
+}
+
+void MainLayout::SetRefreshCallback(std::function<void()> fn) {
+    this->refreshCallback = std::move(fn);
+    this->lastRefresh = time(nullptr); // start the interval from now, not from 0
 }
 
 void MainLayout::SetStatus(const std::string& text) {
     this->statusText->SetText(text);
+}
+
+void MainLayout::SetTrack(const std::string& trackName, const std::string& artistName, bool isPlaying) {
+    if (trackName.empty()) {
+        this->trackText->SetText("Sin reproduccion activa");
+        return;
+    }
+    const std::string prefix = isPlaying ? "[>] " : "[||] ";
+    this->trackText->SetText(prefix + trackName + " - " + artistName);
+}
+
+void MainLayout::SetDevice(const std::string& deviceName) {
+    this->deviceText->SetText(deviceName.empty() ? "" : "Dispositivo: " + deviceName);
 }
 
 // --- MainApplication ---
@@ -88,10 +129,13 @@ void MainApplication::OnLoad() {
         }
     });
 
-    const auto saved = TokenStorage::loadTokens();
+    auto saved = TokenStorage::loadTokens();
     if (saved.valid) {
-        this->mainLayout->SetStatus("Sesion iniciada. Tokens cargados correctamente.");
+        this->currentTokens = saved;
+        this->mainLayout->SetStatus("Sesion iniciada con Spotify.");
         this->LoadLayout(this->mainLayout);
+        this->FetchAndShowPlayerState();
+        this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
         return;
     }
 
@@ -127,6 +171,21 @@ void MainApplication::OnLoad() {
     this->LoadLayout(this->loginLayout);
 }
 
+void MainApplication::FetchAndShowPlayerState() {
+    if (time(nullptr) + 60 >= this->currentTokens.expiresAt) {
+        debugLog("APP: refreshing access token");
+        this->currentTokens = spotify::refreshAccessToken(this->currentTokens.refreshToken);
+        if (this->currentTokens.valid) TokenStorage::saveTokens(this->currentTokens);
+    }
+    if (!this->currentTokens.valid) {
+        this->mainLayout->SetStatus("Error al refrescar el token. Vuelve a iniciar sesion.");
+        return;
+    }
+    const auto player = spotify::getPlayerState(this->currentTokens.accessToken);
+    this->mainLayout->SetTrack(player.trackName, player.artistName, player.isPlaying);
+    this->mainLayout->SetDevice(player.deviceName);
+}
+
 void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
     debugLog("APP: OnLoginSuccess");
     if (this->localServer) {
@@ -134,10 +193,12 @@ void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
         this->localServer.reset();
     }
     debugLog("APP: server stopped");
+    this->currentTokens = tokens;
     TokenStorage::saveTokens(tokens);
     debugLog("APP: tokens saved");
     this->mainLayout->SetStatus("Sesion iniciada con Spotify. Bienvenido!");
-    debugLog("APP: SetStatus done");
     this->LoadLayout(this->mainLayout);
-    debugLog("APP: LoadLayout done");
+    this->FetchAndShowPlayerState();
+    this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
+    debugLog("APP: refresh callback registered");
 }

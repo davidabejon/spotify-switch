@@ -14,11 +14,22 @@ struct Tokens {
         : accessToken(at), refreshToken(rt), expiresAt(ea), valid(true) {}
 };
 
+struct PlayerState {
+    std::string trackName;
+    std::string artistName;
+    std::string deviceName;
+    bool isPlaying;
+    bool valid;
+
+    PlayerState() : isPlaying(false), valid(false) {}
+};
+
 std::string generateCodeVerifier();
 std::string generateCodeChallenge(const std::string& verifier);
 std::string generateState();
 std::string buildAuthUrl(const std::string& challenge, const std::string& state);
 Tokens exchangeCode(const std::string& code, const std::string& verifier);
 Tokens refreshAccessToken(const std::string& existingRefreshToken);
+PlayerState getPlayerState(const std::string& accessToken);
 
 } // namespace spotify
