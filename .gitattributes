@@ -1,0 +1,2 @@
+include/qrcodegen.h linguist-language=ignore
+source/qrcodegen.c linguist-language=ignore
