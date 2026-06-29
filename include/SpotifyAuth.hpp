@@ -3,14 +3,10 @@
 
 namespace spotify {
 
-// Update REDIRECT_URI to your GitHub Pages URL before building.
-// Register the same URL in your Spotify Developer Dashboard.
-const char* const REDIRECT_URI = "https://davidabejon.github.io/spotify-switch/callback";
-
 struct Tokens {
     std::string accessToken;
     std::string refreshToken;
-    long expiresAt;  // Unix timestamp when access token expires
+    long expiresAt;
     bool valid;
 
     Tokens() : expiresAt(0), valid(false) {}

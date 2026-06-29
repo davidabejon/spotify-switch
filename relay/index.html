@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Spotify Switch - Autenticacion</title>
+  <title>Spotify Switch</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -16,51 +16,38 @@
       justify-content: center;
       min-height: 100vh;
       padding: 24px;
+      text-align: center;
     }
-    h1 { color: #1DB954; font-size: 2rem; margin-bottom: 6px; }
+    h1 { color: #1DB954; font-size: 2rem; margin-bottom: 8px; }
     .subtitle { color: #aaa; margin-bottom: 40px; }
     .card {
       background: #1a1a1a;
       border: 2px solid #1DB954;
       border-radius: 16px;
       padding: 32px 40px;
-      max-width: 640px;
+      max-width: 520px;
       width: 100%;
-      text-align: center;
     }
-    .label { color: #aaa; font-size: 0.9rem; margin-bottom: 16px; }
-    .code {
-      font-family: 'Courier New', monospace;
-      font-size: 0.85rem;
-      word-break: break-all;
-      background: #111;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 20px;
-      color: #fff;
-      user-select: all;
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid #333;
+      border-top-color: #1DB954;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin: 0 auto 24px;
     }
-    .hint {
-      background: #282828;
-      border-radius: 10px;
-      padding: 16px 20px;
-      font-size: 0.9rem;
-      color: #ccc;
-      margin-top: 24px;
-    }
-    .hint strong { color: #1DB954; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .msg { color: #ccc; font-size: 1rem; line-height: 1.5; }
     .error-card {
       background: #1a1a1a;
       border: 2px solid #e74c3c;
       border-radius: 16px;
       padding: 32px 40px;
-      max-width: 600px;
+      max-width: 520px;
       width: 100%;
-      text-align: center;
     }
     .error-title { color: #e74c3c; font-size: 1.2rem; margin-bottom: 12px; }
     .error-desc { color: #ccc; }
-    .empty { color: #888; }
   </style>
 </head>
 <body>
@@ -69,7 +56,13 @@
   <div id="root"></div>
   <script>
     const params = new URLSearchParams(window.location.search);
-    const root = document.getElementById('root');
+    const root   = document.getElementById('root');
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     if (params.has('error')) {
       root.innerHTML = `
@@ -78,25 +71,42 @@
           <div class="error-desc">${escapeHtml(params.get('error_description') || 'Autorizacion denegada.')}</div>
         </div>`;
     } else if (params.has('code')) {
-      const code = params.get('code');
-      root.innerHTML = `
-        <div class="card">
-          <div class="label">Introduce este codigo en tu Nintendo Switch:</div>
-          <div class="code">${escapeHtml(code)}</div>
-          <div class="hint">
-            En la Switch, pulsa <strong>"Introducir codigo"</strong> y escribe el codigo de arriba.
-          </div>
-        </div>`;
-    } else {
-      root.innerHTML = '<p class="empty">No se encontro ningun codigo de autorizacion en la URL.</p>';
-    }
+      const code  = params.get('code');
+      const state = params.get('state') || '';
 
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+      // The state format is "<random_base64url>.<ip_with_underscores>"
+      // Extract the Switch IP and redirect the browser to the local server.
+      const dot = state.indexOf('.');
+      if (dot === -1) {
+        root.innerHTML = `
+          <div class="error-card">
+            <div class="error-title">Error de configuracion</div>
+            <div class="error-desc">No se encontro la IP de la Switch en el estado de la sesion.</div>
+          </div>`;
+      } else {
+        const switchIp  = state.substring(dot + 1).replace(/_/g, '.');
+        const target    = 'http://' + switchIp + ':8080/callback'
+                        + '?code='  + encodeURIComponent(code)
+                        + '&state=' + encodeURIComponent(state);
+
+        root.innerHTML = `
+          <div class="card">
+            <div class="spinner"></div>
+            <div class="msg">Conectando con tu Nintendo Switch&hellip;<br>
+              <small style="color:#888;font-size:0.8rem">Si no se redirige automaticamente,
+              asegurate de estar en la misma red WiFi que la Switch.</small>
+            </div>
+          </div>`;
+
+        // Small delay so the loading card renders before the navigation
+        setTimeout(function() { window.location.replace(target); }, 300);
+      }
+    } else {
+      root.innerHTML = `
+        <div class="error-card">
+          <div class="error-title">Pagina de retorno</div>
+          <div class="error-desc">Accede a esta pagina a traves del flujo de autenticacion de Spotify Switch.</div>
+        </div>`;
     }
   </script>
 </body>

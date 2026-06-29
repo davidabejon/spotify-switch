@@ -1,8 +1,9 @@
 #pragma once
 #include <pu/Plutonium>
 #include <SpotifyAuth.hpp>
+#include <LocalServer.hpp>
+#include <memory>
 
-// Shown after successful login
 class MainLayout : public pu::ui::Layout {
 private:
     pu::ui::elm::TextBlock::Ref statusText;
@@ -17,7 +18,8 @@ public:
 class MainApplication : public pu::ui::Application {
 private:
     MainLayout::Ref mainLayout;
-    pu::ui::Layout::Ref loginLayout; // holds LoginLayout by base pointer
+    pu::ui::Layout::Ref loginLayout;
+    std::unique_ptr<LocalServer> localServer;
 
 public:
     using Application::Application;
