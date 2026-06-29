@@ -9,11 +9,13 @@ public:
     using OnLoginSuccessCallback = std::function<void(const spotify::Tokens&)>;
 
 private:
+    enum class State { Waiting, Succeeded, Failed, Handled };
+
     std::string codeVerifier;
     OnLoginSuccessCallback onLoginSuccess;
     LocalServer* server;
-    bool exchangePending;
-    std::string pendingCode;
+    State state;
+    spotify::Tokens resultTokens;
 
     pu::ui::elm::TextBlock::Ref titleText;
     pu::ui::elm::TextBlock::Ref step1Text;
@@ -25,6 +27,7 @@ private:
 
     static pu::sdl2::TextureHandle::Ref buildQrTexture(const std::string& url, s32* outSize);
     void OnRenderCallback();
+    void OnInputCallback();
 
 public:
     LoginLayout(const std::string& authUrl,

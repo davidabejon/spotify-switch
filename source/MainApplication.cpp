@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <DebugLog.hpp>
 #include <cstdio>
 
 // Returns the Switch's local IP, or empty string if not connected to a network.
@@ -127,11 +128,16 @@ void MainApplication::OnLoad() {
 }
 
 void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
+    debugLog("APP: OnLoginSuccess");
     if (this->localServer) {
         this->localServer->stop();
         this->localServer.reset();
     }
+    debugLog("APP: server stopped");
     TokenStorage::saveTokens(tokens);
+    debugLog("APP: tokens saved");
     this->mainLayout->SetStatus("Sesion iniciada con Spotify. Bienvenido!");
+    debugLog("APP: SetStatus done");
     this->LoadLayout(this->mainLayout);
+    debugLog("APP: LoadLayout done");
 }

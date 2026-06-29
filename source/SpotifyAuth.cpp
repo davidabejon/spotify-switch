@@ -1,4 +1,5 @@
 #include <SpotifyAuth.hpp>
+#include <DebugLog.hpp>
 #include <curl/curl.h>
 #include <mbedtls/sha256.h>
 #include <cstring>
@@ -82,20 +83,15 @@ static size_t curlWrite(void* ptr, size_t size, size_t nmemb, std::string* out) 
 }
 
 // --- HTTP POST to Spotify API ---
-
-static void ensureCurlInit() {
-    static bool initialized = false;
-    if (!initialized) {
-        curl_global_init(CURL_GLOBAL_ALL);
-        initialized = true;
-    }
-}
+// curl_global_init() is called once from main() before any threads start.
+// Do NOT call it again here — it is not thread-safe.
 
 static std::string httpPost(const std::string& url, const std::string& body) {
-    ensureCurlInit();
+    debugLog("HTTP: curl_easy_init");
     CURL* curl = curl_easy_init();
-    if (!curl) return "";
+    if (!curl) { debugLog("HTTP: curl_easy_init returned null"); return ""; }
 
+    debugLog("HTTP: setopt");
     std::string response;
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
@@ -105,14 +101,19 @@ static std::string httpPost(const std::string& url, const std::string& body) {
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    // SSL peer verification is disabled because Switch homebrew does not have
-    // access to a system CA store. Communication is still encrypted (TLS).
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 
-    curl_easy_perform(curl);
+    debugLog("HTTP: curl_easy_perform");
+    const CURLcode res = curl_easy_perform(curl);
+    char resBuf[64];
+    snprintf(resBuf, sizeof(resBuf), "HTTP: res=%d len=%d", (int)res, (int)response.size());
+    debugLog(resBuf);
+
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
+    debugLog("HTTP: done");
     return response;
 }
 

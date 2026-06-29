@@ -1,32 +1,21 @@
 #pragma once
 #include <string>
-#include <switch.h>
 
 class LocalServer {
 public:
-    struct CallbackResult {
-        std::string code;
-        std::string error;
-        bool ready = false;
-    };
-
     explicit LocalServer(int port = 8080);
     ~LocalServer();
 
     bool start();
     void stop();
-    CallbackResult poll(); // non-blocking
+
+    // Called from the render callback (main thread). Non-blocking: returns
+    // immediately if no connection is waiting. On the frame a browser connects,
+    // recv blocks briefly (~1-5 ms on local WiFi) then returns.
+    // Returns true when a callback URL was received; fills code / error.
+    bool tick(std::string& code, std::string& error);
 
 private:
     int port;
     int serverFd;
-    Thread thread;
-    bool threadStarted;
-    Mutex mutex;
-    bool codeReady;
-    std::string capturedCode;
-    std::string capturedError;
-
-    static void threadEntry(void* arg);
-    void run();
 };

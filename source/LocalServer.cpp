@@ -8,38 +8,53 @@
 #include <fcntl.h>
 #include <sys/select.h>
 
-static std::string urlDecode(const std::string& s) {
-    std::string out;
-    for (size_t i = 0; i < s.size(); i++) {
-        if (s[i] == '%' && i + 2 < s.size()) {
-            char hex[3] = { s[i + 1], s[i + 2], '\0' };
-            out += static_cast<char>(strtol(hex, nullptr, 16));
+// ── URL decoding ─────────────────────────────────────────────────────────────
+
+static void urlDecode(const char* src, char* dst, size_t dstSize) {
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 1 < dstSize; i++) {
+        if (src[i] == '%' && src[i+1] && src[i+2]) {
+            char hex[3] = { src[i+1], src[i+2], '\0' };
+            dst[j++] = static_cast<char>(strtol(hex, nullptr, 16));
             i += 2;
-        } else if (s[i] == '+') {
-            out += ' ';
+        } else if (src[i] == '+') {
+            dst[j++] = ' ';
         } else {
-            out += s[i];
+            dst[j++] = src[i];
         }
     }
-    return out;
+    dst[j] = '\0';
 }
 
-static std::string getQueryParam(const std::string& query, const std::string& key) {
-    size_t pos = 0;
-    while (pos < query.size()) {
-        const auto eq  = query.find('=', pos);
-        if (eq == std::string::npos) break;
-        const auto amp = query.find('&', eq + 1);
-        if (query.substr(pos, eq - pos) == key) {
-            const auto val = query.substr(eq + 1,
-                amp == std::string::npos ? std::string::npos : amp - eq - 1);
-            return urlDecode(val);
+// Finds key= in a query string (e.g. "code=ABC&state=XYZ") and writes the
+// URL-decoded value into dst. Returns true if found.
+static bool queryParam(const char* query, const char* key,
+                       char* dst, size_t dstSize) {
+    const size_t keyLen = strlen(key);
+    const char* p = query;
+    while (*p) {
+        const char* eq = strchr(p, '=');
+        if (!eq) break;
+        if (static_cast<size_t>(eq - p) == keyLen &&
+                strncmp(p, key, keyLen) == 0) {
+            const char* amp = strchr(eq + 1, '&');
+            size_t valLen = amp ? static_cast<size_t>(amp - eq - 1)
+                                : strlen(eq + 1);
+            if (valLen >= dstSize) valLen = dstSize - 1;
+            char raw[512] = {};
+            memcpy(raw, eq + 1, valLen);
+            urlDecode(raw, dst, dstSize);
+            return true;
         }
-        if (amp == std::string::npos) break;
-        pos = amp + 1;
+        const char* amp = strchr(eq + 1, '&');
+        if (!amp) break;
+        p = amp + 1;
     }
-    return "";
+    dst[0] = '\0';
+    return false;
 }
+
+// ── HTML responses ────────────────────────────────────────────────────────────
 
 static const char SUCCESS_PAGE[] =
     "HTTP/1.1 200 OK\r\n"
@@ -63,15 +78,11 @@ static const char ERROR_PAGE[] =
     "<h1 style='color:#e74c3c'>Error de autorizacion</h1>"
     "<p>Intentalo de nuevo desde la Switch.</p></body></html>\r\n";
 
-LocalServer::LocalServer(int port)
-    : port(port), serverFd(-1), threadStarted(false), codeReady(false)
-{
-    mutexInit(&this->mutex);
-}
+// ── LocalServer ───────────────────────────────────────────────────────────────
 
-LocalServer::~LocalServer() {
-    stop();
-}
+LocalServer::LocalServer(int port) : port(port), serverFd(-1) {}
+
+LocalServer::~LocalServer() { stop(); }
 
 bool LocalServer::start() {
     this->serverFd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -85,105 +96,69 @@ bool LocalServer::start() {
     addr.sin_port        = htons(static_cast<uint16_t>(this->port));
     addr.sin_addr.s_addr = INADDR_ANY;
 
-    if (bind(this->serverFd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
-        close(this->serverFd);
-        this->serverFd = -1;
-        return false;
+    if (bind(this->serverFd,
+             reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        close(this->serverFd); this->serverFd = -1; return false;
     }
-
     if (listen(this->serverFd, 1) < 0) {
-        close(this->serverFd);
-        this->serverFd = -1;
-        return false;
+        close(this->serverFd); this->serverFd = -1; return false;
     }
 
-    const auto rc = threadCreate(&this->thread, LocalServer::threadEntry, this,
-                                 nullptr, 0x10000, 0x2C, -2);
-    if (R_FAILED(rc)) {
-        close(this->serverFd);
-        this->serverFd = -1;
-        return false;
-    }
+    // Non-blocking so tick() never stalls the render loop on accept()
+    const int flags = fcntl(this->serverFd, F_GETFL, 0);
+    fcntl(this->serverFd, F_SETFL, flags | O_NONBLOCK);
 
-    threadStart(&this->thread);
-    this->threadStarted = true;
     return true;
 }
 
 void LocalServer::stop() {
     if (this->serverFd >= 0) {
-        shutdown(this->serverFd, SHUT_RDWR);
         close(this->serverFd);
         this->serverFd = -1;
     }
-    if (this->threadStarted) {
-        threadWaitForExit(&this->thread);
-        threadClose(&this->thread);
-        this->threadStarted = false;
-    }
 }
 
-LocalServer::CallbackResult LocalServer::poll() {
-    CallbackResult result;
-    mutexLock(&this->mutex);
-    if (this->codeReady) {
-        result.ready = true;
-        result.code  = this->capturedCode;
-        result.error = this->capturedError;
-    }
-    mutexUnlock(&this->mutex);
-    return result;
-}
+bool LocalServer::tick(std::string& code, std::string& error) {
+    if (this->serverFd < 0) return false;
 
-void LocalServer::threadEntry(void* arg) {
-    static_cast<LocalServer*>(arg)->run();
-}
+    // Non-blocking accept — returns immediately if no one is connecting
+    const int client = accept(this->serverFd, nullptr, nullptr);
+    if (client < 0) return false; // EAGAIN / EWOULDBLOCK = nothing yet
 
-void LocalServer::run() {
-    while (true) {
-        // Wait for connection with 500ms timeout so we can react to stop()
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(this->serverFd, &fds);
-        struct timeval tv = { 0, 500000 };
-        const int ret = select(this->serverFd + 1, &fds, nullptr, nullptr, &tv);
-        if (ret < 0) break; // serverFd was closed by stop()
-        if (ret == 0) continue;
-
-        const int client = accept(this->serverFd, nullptr, nullptr);
-        if (client < 0) break;
-
-        char buf[4096] = {};
-        const auto n = recv(client, buf, sizeof(buf) - 1, 0);
-
-        std::string code, error;
-        if (n > 0) {
-            const std::string req(buf, static_cast<size_t>(n));
-            // Parse: "GET /callback?code=...&state=... HTTP/1.1"
-            const auto pathStart = req.find("GET /");
-            if (pathStart != std::string::npos) {
-                const auto pathEnd = req.find(" HTTP/", pathStart + 4);
-                const auto path = req.substr(pathStart + 4,
-                    pathEnd == std::string::npos ? std::string::npos : pathEnd - pathStart - 4);
-                const auto qPos = path.find('?');
-                if (qPos != std::string::npos) {
-                    const auto query = path.substr(qPos + 1);
-                    code  = getQueryParam(query, "code");
-                    error = getQueryParam(query, "error");
-                }
-            }
-        }
-
-        const bool ok = !code.empty();
-        send(client, ok ? SUCCESS_PAGE : ERROR_PAGE,
-             ok ? sizeof(SUCCESS_PAGE) - 1 : sizeof(ERROR_PAGE) - 1, 0);
+    // Wait up to 200 ms for the browser to send its request
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(client, &fds);
+    struct timeval tv = { 0, 200000 };
+    if (select(client + 1, &fds, nullptr, nullptr, &tv) <= 0) {
         close(client);
-
-        mutexLock(&this->mutex);
-        this->capturedCode  = code;
-        this->capturedError = error;
-        this->codeReady     = true;
-        mutexUnlock(&this->mutex);
-        break; // one successful callback is enough
+        return false;
     }
+
+    char buf[4096] = {};
+    recv(client, buf, sizeof(buf) - 1, 0);
+
+    char codeBuf[512]  = {};
+    char errorBuf[256] = {};
+
+    const char* getPos = strstr(buf, "GET /");
+    if (getPos) {
+        const char* pathStart = getPos + 4;
+        const char* qMark     = strchr(pathStart, '?');
+        const char* httpEnd   = strstr(pathStart, " HTTP/");
+        if (qMark && (!httpEnd || qMark < httpEnd)) {
+            queryParam(qMark + 1, "code",  codeBuf,  sizeof(codeBuf));
+            queryParam(qMark + 1, "error", errorBuf, sizeof(errorBuf));
+        }
+    }
+
+    const bool ok = codeBuf[0] != '\0';
+    send(client,
+         ok ? SUCCESS_PAGE : ERROR_PAGE,
+         ok ? sizeof(SUCCESS_PAGE) - 1 : sizeof(ERROR_PAGE) - 1, 0);
+    close(client);
+
+    code  = codeBuf;
+    error = errorBuf;
+    return true;
 }

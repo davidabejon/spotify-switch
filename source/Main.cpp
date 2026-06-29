@@ -1,8 +1,12 @@
 #include <MainApplication.hpp>
 #include <switch.h>
+#include <curl/curl.h>
 
 int main() {
     socketInitializeDefault();
+    // curl_global_init is not thread-safe — must be called from the main thread
+    // before any secondary threads start using libcurl.
+    curl_global_init(CURL_GLOBAL_ALL);
 
     auto renderer_opts = pu::ui::render::RendererInitOptions(SDL_INIT_EVERYTHING, pu::ui::render::RendererHardwareFlags);
     renderer_opts.UseImage(pu::ui::render::ImgAllFlags);

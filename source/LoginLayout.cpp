@@ -1,22 +1,22 @@
 #include <LoginLayout.hpp>
 #include <SpotifyAuth.hpp>
+#include <DebugLog.hpp>
 #include <qrcodegen.h>
 #include <switch.h>
 #include <SDL2/SDL.h>
 #include <algorithm>
 
-// Screen: 1920x1080
-static constexpr s32 W          = 1920;
-static constexpr s32 H          = 1080;
-static constexpr s32 MARGIN     = 100;
-static constexpr s32 QR_X       = 1280;   // QR panel starts here
-static constexpr s32 LEFT_W     = QR_X - MARGIN * 2;
+static constexpr s32 W       = 1920;
+static constexpr s32 H       = 1080;
+static constexpr s32 MARGIN  = 100;
+static constexpr s32 QR_X    = 1280;
+static constexpr s32 LEFT_W  = QR_X - MARGIN * 2;
 
-static const pu::ui::Color CLR_BG     {  18,  18,  18, 255 };
-static const pu::ui::Color CLR_WHITE  { 255, 255, 255, 255 };
-static const pu::ui::Color CLR_GRAY   { 150, 150, 150, 255 };
-static const pu::ui::Color CLR_GREEN  {  29, 185,  84, 255 };
-static const pu::ui::Color CLR_RED    { 220,  50,  50, 255 };
+static const pu::ui::Color CLR_BG    {  18,  18,  18, 255 };
+static const pu::ui::Color CLR_WHITE { 255, 255, 255, 255 };
+static const pu::ui::Color CLR_GRAY  { 150, 150, 150, 255 };
+static const pu::ui::Color CLR_GREEN {  29, 185,  84, 255 };
+static const pu::ui::Color CLR_RED   { 220,  50,  50, 255 };
 
 pu::sdl2::TextureHandle::Ref LoginLayout::buildQrTexture(const std::string& url, s32* outSize) {
     if (outSize) *outSize = 0;
@@ -42,16 +42,14 @@ pu::sdl2::TextureHandle::Ref LoginLayout::buildQrTexture(const std::string& url,
         0x00FF0000u, 0x0000FF00u, 0x000000FFu, 0xFF000000u);
     if (!surface) return nullptr;
 
-    SDL_FillRect(surface, nullptr,
-        SDL_MapRGBA(surface->format, 255, 255, 255, 255));
+    SDL_FillRect(surface, nullptr, SDL_MapRGBA(surface->format, 255, 255, 255, 255));
 
     const int offset = quiet * scale;
     for (int row = 0; row < modules; row++) {
         for (int col = 0; col < modules; col++) {
             if (qrcodegen_getModule(qrcode, col, row)) {
                 SDL_Rect rect = { offset + col * scale, offset + row * scale, scale, scale };
-                SDL_FillRect(surface, &rect,
-                    SDL_MapRGBA(surface->format, 0, 0, 0, 255));
+                SDL_FillRect(surface, &rect, SDL_MapRGBA(surface->format, 0, 0, 0, 255));
             }
         }
     }
@@ -67,25 +65,22 @@ LoginLayout::LoginLayout(const std::string& authUrl,
                          LocalServer* srv,
                          OnLoginSuccessCallback cb)
     : Layout::Layout(), codeVerifier(verifier), onLoginSuccess(cb),
-      server(srv), exchangePending(false)
+      server(srv), state(State::Waiting)
 {
     this->SetBackgroundColor(CLR_BG);
 
-    // Title
     this->titleText = pu::ui::elm::TextBlock::New(0, 50, "Spotify Switch");
     this->titleText->SetColor(CLR_GREEN);
     this->titleText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
     this->titleText->SetX((W / 2) - 180);
     this->Add(this->titleText);
 
-    // Step 1
     this->step1Text = pu::ui::elm::TextBlock::New(MARGIN, 190,
         "Paso 1 - Escanea el codigo QR con la camara del movil:");
     this->step1Text->SetColor(CLR_WHITE);
     this->step1Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->step1Text);
 
-    // Auth URL (scrolling, smaller — mostly for debugging)
     this->urlText = pu::ui::elm::TextBlock::New(MARGIN, 250, authUrl);
     this->urlText->SetColor(CLR_GREEN);
     this->urlText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
@@ -94,27 +89,22 @@ LoginLayout::LoginLayout(const std::string& authUrl,
     this->urlText->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->urlText);
 
-    // Step 2
     this->step2Text = pu::ui::elm::TextBlock::New(MARGIN, 330,
         "Paso 2 - Inicia sesion con tu cuenta de Spotify.");
     this->step2Text->SetColor(CLR_WHITE);
     this->step2Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->step2Text);
 
-    // Status
-    this->statusText = pu::ui::elm::TextBlock::New(MARGIN, 410,
-        "Esperando autorizacion...");
+    this->statusText = pu::ui::elm::TextBlock::New(MARGIN, 410, "Esperando autorizacion...");
     this->statusText->SetColor(CLR_GRAY);
     this->statusText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->statusText);
 
-    // Footer
     auto hint = pu::ui::elm::TextBlock::New((W / 2) - 120, 1030, "Pulsa + para salir");
     hint->SetColor(CLR_GRAY);
     hint->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
     this->Add(hint);
 
-    // QR code (right panel)
     s32 qrSide = 0;
     auto texHandle = buildQrTexture(authUrl, &qrSide);
     if (texHandle && qrSide > 0) {
@@ -135,41 +125,63 @@ LoginLayout::LoginLayout(const std::string& authUrl,
         this->Add(this->scanHintText);
     }
 
-    this->SetOnInput([](const u64, const u64, const u64, const pu::ui::TouchPoint) {});
-
-    // Poll the local server every frame
+    // Render callback: polls the server and — when a code arrives — performs the
+    // token exchange inline (blocking ~1 s). The UI freezes briefly but the Switch
+    // OS will not kill a homebrew app for a pause this short.
+    // LoadLayout is NOT called here; that happens in the input callback.
     this->AddRenderCallback([this]() { this->OnRenderCallback(); });
+
+    // Input callback: the only place where LoadLayout is called (safe during input phase).
+    this->SetOnInput([this](const u64 keys_down, const u64 keys_up,
+                            const u64 keys_held, const pu::ui::TouchPoint touch_pos) {
+        (void)keys_down; (void)keys_up; (void)keys_held; (void)touch_pos;
+        this->OnInputCallback();
+    });
 }
 
+// Called ~60 fps during the RENDER phase.
+// When a code arrives from the server it exchanges it for tokens inline (blocks ~1 s).
+// Must NOT call LoadLayout here.
 void LoginLayout::OnRenderCallback() {
-    if (this->exchangePending) {
-        // Second frame after code was received — now do the blocking token exchange
-        this->exchangePending = false;
-        const auto tokens = spotify::exchangeCode(this->pendingCode, this->codeVerifier);
-        if (!tokens.valid) {
-            this->statusText->SetText("Error: fallo al obtener tokens. Intentalo de nuevo.");
-            this->statusText->SetColor(CLR_RED);
-            return;
-        }
-        this->onLoginSuccess(tokens);
-        return;
-    }
-
+    if (this->state != State::Waiting) return;
     if (!this->server) return;
-    const auto result = this->server->poll();
-    if (!result.ready) return;
 
-    if (!result.error.empty()) {
-        this->statusText->SetText("Error de autorizacion: " + result.error);
+    std::string code, error;
+    if (!this->server->tick(code, error)) return;
+
+    debugLog("RENDER: code received");
+
+    if (!error.empty()) {
+        this->statusText->SetText("Error de autorizacion: " + error);
         this->statusText->SetColor(CLR_RED);
+        this->state = State::Failed;
         return;
     }
+    if (code.empty()) return;
 
-    if (!result.code.empty()) {
-        this->statusText->SetText("Codigo recibido. Obteniendo tokens...");
-        this->statusText->SetColor(CLR_GREEN);
-        this->pendingCode    = result.code;
-        this->exchangePending = true;
-        // Return now so the status text renders before the blocking HTTP call
+    this->statusText->SetText("Codigo recibido. Iniciando sesion...");
+    this->statusText->SetColor(CLR_GREEN);
+
+    // Blocking token exchange — renders freeze for ~1 s, which is acceptable.
+    debugLog("RENDER: calling exchangeCode");
+    this->resultTokens = spotify::exchangeCode(code, this->codeVerifier);
+    debugLog(this->resultTokens.valid ? "RENDER: tokens valid" : "RENDER: tokens invalid");
+
+    if (this->resultTokens.valid) {
+        this->state = State::Succeeded;
+    } else {
+        this->state = State::Failed;
+        this->statusText->SetText("Error al obtener tokens. Intentalo de nuevo.");
+        this->statusText->SetColor(CLR_RED);
+    }
+}
+
+// Called ~60 fps during the INPUT phase. Safe to call LoadLayout from here.
+void LoginLayout::OnInputCallback() {
+    if (this->state == State::Succeeded) {
+        debugLog("INPUT: calling onLoginSuccess");
+        this->state = State::Handled;
+        this->onLoginSuccess(this->resultTokens);
+        debugLog("INPUT: onLoginSuccess returned");
     }
 }
