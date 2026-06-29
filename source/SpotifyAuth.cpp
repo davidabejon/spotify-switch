@@ -132,6 +132,27 @@ static std::string jsonGetObject(const std::string& json, const std::string& key
     return json.substr(pos + 1, end - pos - 2);
 }
 
+// Returns up to maxItems string values from a JSON string array, comma-separated.
+static std::string jsonGetStringArray(const std::string& json, const std::string& key, int maxItems = 3) {
+    const auto pos = jsonFindValue(json, key);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '[') return "";
+    std::string result;
+    int count = 0;
+    size_t i = pos + 1;
+    while (i < json.size() && json[i] != ']' && count < maxItems) {
+        while (i < json.size() && json[i] != '"' && json[i] != ']') ++i;
+        if (i >= json.size() || json[i] == ']') break;
+        const auto start = i + 1;
+        const auto end = json.find('"', start);
+        if (end == std::string::npos) break;
+        if (count > 0) result += ", ";
+        result += json.substr(start, end - start);
+        ++count;
+        i = end + 1;
+    }
+    return result;
+}
+
 // Returns a specific field from the first object in a JSON array for 'key'.
 static std::string jsonFirstArrayItemField(const std::string& json,
                                            const std::string& arrayKey,
@@ -346,6 +367,7 @@ PlayerState getPlayerState(const std::string& accessToken) {
     }
 
     state.artistName = jsonFirstArrayItemName(itemObj, "artists", afterAlbum);
+    state.artistId   = jsonFirstArrayItemField(itemObj, "artists", "id", afterAlbum);
 
     // Track name comes after both album and artists — skip artists array too.
     size_t afterArtists = afterAlbum;
@@ -356,9 +378,18 @@ PlayerState getPlayerState(const std::string& accessToken) {
     }
     state.trackName = jsonGetStringFrom(itemObj, "name", afterArtists);
 
-    // Album art: first image URL from item.album.images[]
+    // Album art and ID from item.album.
+    // Must skip the nested "artists" array inside the album object — it contains its own
+    // "id" fields that would be found before the album-level "id" if we search from the start.
     const auto albumObj = jsonGetObject(itemObj, "album");
     state.albumImageUrl = jsonFirstArrayItemField(albumObj, "images", "url");
+    {
+        size_t afterAlbumArtists = 0;
+        const auto ap = jsonFindValue(albumObj, "artists");
+        if (ap != std::string::npos && ap < albumObj.size() && albumObj[ap] == '[')
+            afterAlbumArtists = jsonSkipValue(albumObj, ap);
+        state.albumId = jsonGetStringFrom(albumObj, "id", afterAlbumArtists);
+    }
 
     const auto isPlayingPos = jsonFindValue(resp, "is_playing");
     state.isPlaying = (isPlayingPos != std::string::npos &&
@@ -444,6 +475,44 @@ void skipNext(const std::string& accessToken) {
 void skipPrevious(const std::string& accessToken) {
     debugLog("CTRL: previous");
     httpPostNoBody("https://api.spotify.com/v1/me/player/previous", accessToken);
+}
+
+// --- Artist info ---
+
+ArtistInfo getArtistInfo(const std::string& artistId, const std::string& accessToken) {
+    ArtistInfo info;
+    if (artistId.empty()) return info;
+    const auto resp = httpGet("https://api.spotify.com/v1/artists/" + artistId, accessToken);
+    if (resp.size() < 10) return info;
+
+    info.name       = jsonGetString(resp, "name");
+    info.genres     = jsonGetStringArray(resp, "genres", 3);
+    info.popularity = (int)jsonGetLong(resp, "popularity");
+    info.imageUrl   = jsonFirstArrayItemField(resp, "images", "url");
+
+    const auto followersObj = jsonGetObject(resp, "followers");
+    info.followers  = jsonGetLong(followersObj, "total");
+
+    info.valid = !info.name.empty();
+    return info;
+}
+
+// --- Album info ---
+
+AlbumInfo getAlbumInfo(const std::string& albumId, const std::string& accessToken) {
+    AlbumInfo info;
+    if (albumId.empty()) return info;
+    const auto resp = httpGet("https://api.spotify.com/v1/albums/" + albumId, accessToken);
+    if (resp.size() < 10) return info;
+
+    info.name        = jsonGetString(resp, "name");
+    info.albumType   = jsonGetString(resp, "album_type");
+    info.releaseDate = jsonGetString(resp, "release_date");
+    info.label       = jsonGetString(resp, "label");
+    info.totalTracks = (int)jsonGetLong(resp, "total_tracks");
+    info.popularity  = (int)jsonGetLong(resp, "popularity");
+    info.valid       = !info.name.empty();
+    return info;
 }
 
 // --- Album art download (Spotify CDN, no auth required) ---

@@ -46,7 +46,25 @@ private:
     pu::ui::elm::TextBlock::Ref rightTab2Text;
     pu::ui::elm::Rectangle::Ref rightTabIndicator;
     pu::ui::elm::Rectangle::Ref rightHorizSep;
-    pu::ui::elm::TextBlock::Ref artistPlaceholder;
+
+    // Artist tab content
+    pu::ui::elm::Rectangle::Ref rightArtistImgBg;
+    pu::ui::elm::Image::Ref     rightArtistImg;
+    pu::ui::elm::TextBlock::Ref rightArtistName;
+    pu::ui::elm::TextBlock::Ref rightArtistGenres;
+    pu::ui::elm::TextBlock::Ref rightArtistFollowers;
+    pu::ui::elm::TextBlock::Ref rightArtistPopularity;
+
+    // Album section (inside Artist tab, below artist image)
+    pu::ui::elm::Rectangle::Ref rightAlbumSep;
+    pu::ui::elm::Rectangle::Ref rightAlbumImgBg;
+    pu::ui::elm::Image::Ref     rightAlbumImg;
+    pu::ui::elm::TextBlock::Ref rightAlbumHeader;
+    pu::ui::elm::TextBlock::Ref rightAlbumName;
+    pu::ui::elm::TextBlock::Ref rightAlbumTypeYear;
+    pu::ui::elm::TextBlock::Ref rightAlbumTracks;
+
+    // Queue tab content
     pu::ui::elm::TextBlock::Ref queuePlaceholder;
 
     // State
@@ -69,6 +87,10 @@ public:
     void SetDevice(const std::string& deviceName);
     void SetAlbumArt(pu::sdl2::TextureHandle::Ref handle);
     void UpdatePlayButton(bool isPlaying);
+    void SetArtistInfo(const spotify::ArtistInfo& info);
+    void SetArtistImage(pu::sdl2::TextureHandle::Ref handle);
+    void SetAlbumInfo(const spotify::AlbumInfo& info);
+    void SetAlbumThumbnail(pu::sdl2::TextureHandle::Ref handle);
     void SwitchToTab(Tab tab);
     Tab GetCurrentTab() const { return this->currentTab; }
     void SwitchRightTab(RightTab tab);
@@ -85,6 +107,8 @@ private:
     bool mainLayoutActive = false;
     bool isPlaying = false;
     std::string currentAlbumUrl;
+    std::string currentAlbumId;
+    std::string currentArtistId;
 
     void FetchAndShowPlayerState();
     void OnPlayPause();

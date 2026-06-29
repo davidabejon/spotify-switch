@@ -53,6 +53,38 @@ static constexpr s32 RIGHT_W      = SCREEN_W - RIGHT_X - RIGHT_MARGIN;  // 655
 static constexpr s32 RIGHT_TAB_H  = 52;
 static constexpr s32 RIGHT_TAB_W  = RIGHT_W / 2;                        // 327
 
+// Right-panel horizontal geometry
+static constexpr s32 RART_IMG_SIZE  = 200;
+static constexpr s32 RART_IMG_X     = RIGHT_X + 28;                                // 1128
+static constexpr s32 RART_INFO_X    = RART_IMG_X + RART_IMG_SIZE + 20;             // 1348
+static constexpr s32 RART_INFO_W    = SCREEN_W - RIGHT_MARGIN - RART_INFO_X - 10;  // ~387
+static constexpr s32 RALBUM_IMG_SIZE = 100;
+static constexpr s32 RALBUM_TEXT_X   = RART_IMG_X + RALBUM_IMG_SIZE + 14;          // 1242
+static constexpr s32 RALBUM_FULL_W   = SCREEN_W - RIGHT_MARGIN - RART_IMG_X - 10;  // ~617
+static constexpr s32 RALBUM_TEXT_W   = RALBUM_FULL_W - RALBUM_IMG_SIZE - 14;       // ~503
+
+// Flex-column space-around vertical layout
+// Content area Y=208, H=726. Blocks: artist 200px + album 120px = 320px.
+// space-around (2 items): outer=g, inner=2g → 4g = 406 → g=101
+static constexpr s32 RCONT_Y         = ART_Y + RIGHT_TAB_H + 2;                    // 208
+static constexpr s32 RCONT_H         = CTRL_Y + CTRL_LARGE - RCONT_Y;              // 726
+static constexpr s32 RFLEX_G         = (RCONT_H - RART_IMG_SIZE - 120) / 4;        // 101
+static constexpr s32 RART_BLOCK_Y    = RCONT_Y + RFLEX_G;                          // 309
+static constexpr s32 RALBUM_BLOCK_Y  = RART_BLOCK_Y + RART_IMG_SIZE + 2 * RFLEX_G; // 711
+
+// Artist info text Y (generous spacing alongside the 200px image)
+static constexpr s32 RART_NAME_Y     = RART_BLOCK_Y;                               // 309
+static constexpr s32 RART_GENRES_Y   = RART_NAME_Y   + 52;                         // 361
+static constexpr s32 RART_FOLLOW_Y   = RART_GENRES_Y + 42;                         // 403
+static constexpr s32 RART_POP_Y      = RART_FOLLOW_Y + 36;                         // 439
+
+// Album info text Y (alongside the 100px thumbnail)
+static constexpr s32 RALBUM_SEP_Y    = RART_BLOCK_Y + RART_IMG_SIZE + RFLEX_G;    // 610
+static constexpr s32 RALBUM_HDR_Y    = RALBUM_BLOCK_Y;                             // 711
+static constexpr s32 RALBUM_NAME_Y   = RALBUM_HDR_Y  + 30;                         // 741
+static constexpr s32 RALBUM_INFO1_Y  = RALBUM_NAME_Y + 36;                         // 777
+static constexpr s32 RALBUM_INFO2_Y  = RALBUM_INFO1_Y + 30;                        // 807
+
 static constexpr time_t REFRESH_INTERVAL_SECS = 5;
 
 // --- Colors ---
@@ -259,11 +291,75 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->rightHorizSep = pu::ui::elm::Rectangle::New(RIGHT_X, ART_Y + RIGHT_TAB_H, RIGHT_W, 1, CLR_SEP);
     this->Add(this->rightHorizSep);
 
-    // Placeholder content (Artist tab, shown by default)
-    this->artistPlaceholder = pu::ui::elm::TextBlock::New(RIGHT_X + 255, ART_Y + RIGHT_TAB_H + 220, "[ Info del artista ]");
-    this->artistPlaceholder->SetColor(CLR_GRAY);
-    this->artistPlaceholder->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->Add(this->artistPlaceholder);
+    // Artist tab content
+    this->rightArtistImgBg = pu::ui::elm::Rectangle::New(RART_IMG_X, RART_BLOCK_Y, RART_IMG_SIZE, RART_IMG_SIZE, CLR_ART_BG, 10);
+    this->Add(this->rightArtistImgBg);
+
+    this->rightArtistImg = pu::ui::elm::Image::New(RART_IMG_X, RART_BLOCK_Y, nullptr);
+    this->rightArtistImg->SetWidth(RART_IMG_SIZE);
+    this->rightArtistImg->SetHeight(RART_IMG_SIZE);
+    this->Add(this->rightArtistImg);
+
+    this->rightArtistName = pu::ui::elm::TextBlock::New(RART_INFO_X, RART_NAME_Y, "");
+    this->rightArtistName->SetColor(CLR_WHITE);
+    this->rightArtistName->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
+    this->rightArtistName->SetClampWidth(RART_INFO_W);
+    this->rightArtistName->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->rightArtistName->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
+    this->Add(this->rightArtistName);
+
+    this->rightArtistGenres = pu::ui::elm::TextBlock::New(RART_INFO_X, RART_GENRES_Y, "");
+    this->rightArtistGenres->SetColor(CLR_GRAY);
+    this->rightArtistGenres->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->rightArtistGenres->SetClampWidth(RART_INFO_W);
+    this->rightArtistGenres->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->rightArtistGenres->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
+    this->Add(this->rightArtistGenres);
+
+    this->rightArtistFollowers = pu::ui::elm::TextBlock::New(RART_INFO_X, RART_FOLLOW_Y, "");
+    this->rightArtistFollowers->SetColor(CLR_GRAY);
+    this->rightArtistFollowers->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->Add(this->rightArtistFollowers);
+
+    this->rightArtistPopularity = pu::ui::elm::TextBlock::New(RART_INFO_X, RART_POP_Y, "");
+    this->rightArtistPopularity->SetColor(CLR_GRAY);
+    this->rightArtistPopularity->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->Add(this->rightArtistPopularity);
+
+    // Album section — separator, thumbnail, header + info lines
+    this->rightAlbumSep = pu::ui::elm::Rectangle::New(RART_IMG_X, RALBUM_SEP_Y, RALBUM_FULL_W, 1, CLR_SEP);
+    this->Add(this->rightAlbumSep);
+
+    this->rightAlbumImgBg = pu::ui::elm::Rectangle::New(RART_IMG_X, RALBUM_BLOCK_Y, RALBUM_IMG_SIZE, RALBUM_IMG_SIZE, CLR_ART_BG, 6);
+    this->Add(this->rightAlbumImgBg);
+
+    this->rightAlbumImg = pu::ui::elm::Image::New(RART_IMG_X, RALBUM_BLOCK_Y, nullptr);
+    this->rightAlbumImg->SetWidth(RALBUM_IMG_SIZE);
+    this->rightAlbumImg->SetHeight(RALBUM_IMG_SIZE);
+    this->Add(this->rightAlbumImg);
+
+    this->rightAlbumHeader = pu::ui::elm::TextBlock::New(RALBUM_TEXT_X, RALBUM_HDR_Y, "ALBUM");
+    this->rightAlbumHeader->SetColor(CLR_HINT);
+    this->rightAlbumHeader->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->Add(this->rightAlbumHeader);
+
+    this->rightAlbumName = pu::ui::elm::TextBlock::New(RALBUM_TEXT_X, RALBUM_NAME_Y, "");
+    this->rightAlbumName->SetColor(CLR_WHITE);
+    this->rightAlbumName->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->rightAlbumName->SetClampWidth(RALBUM_TEXT_W);
+    this->rightAlbumName->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->rightAlbumName->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
+    this->Add(this->rightAlbumName);
+
+    this->rightAlbumTypeYear = pu::ui::elm::TextBlock::New(RALBUM_TEXT_X, RALBUM_INFO1_Y, "");
+    this->rightAlbumTypeYear->SetColor(CLR_GRAY);
+    this->rightAlbumTypeYear->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->Add(this->rightAlbumTypeYear);
+
+    this->rightAlbumTracks = pu::ui::elm::TextBlock::New(RALBUM_TEXT_X, RALBUM_INFO2_Y, "");
+    this->rightAlbumTracks->SetColor(CLR_GRAY);
+    this->rightAlbumTracks->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->Add(this->rightAlbumTracks);
 
     // Placeholder content (Queue tab, hidden by default)
     this->queuePlaceholder = pu::ui::elm::TextBlock::New(RIGHT_X + 215, ART_Y + RIGHT_TAB_H + 220, "[ Cola de reproduccion ]");
@@ -303,7 +399,20 @@ void MainLayout::SetRightPanelVisible(bool visible) {
     this->rightTab2Text->SetVisible(visible);
     this->rightTabIndicator->SetVisible(visible);
     this->rightHorizSep->SetVisible(visible);
-    this->artistPlaceholder->SetVisible(visible && this->currentRightTab == RightTab::Artist);
+    const bool showArtist = visible && this->currentRightTab == RightTab::Artist;
+    this->rightArtistImgBg->SetVisible(showArtist);
+    this->rightArtistImg->SetVisible(showArtist);
+    this->rightArtistName->SetVisible(showArtist);
+    this->rightArtistGenres->SetVisible(showArtist);
+    this->rightArtistFollowers->SetVisible(showArtist);
+    this->rightArtistPopularity->SetVisible(showArtist);
+    this->rightAlbumSep->SetVisible(showArtist);
+    this->rightAlbumImgBg->SetVisible(showArtist);
+    this->rightAlbumImg->SetVisible(showArtist);
+    this->rightAlbumHeader->SetVisible(showArtist);
+    this->rightAlbumName->SetVisible(showArtist);
+    this->rightAlbumTypeYear->SetVisible(showArtist);
+    this->rightAlbumTracks->SetVisible(showArtist);
     this->queuePlaceholder->SetVisible(visible && this->currentRightTab == RightTab::Queue);
 }
 
@@ -331,7 +440,19 @@ void MainLayout::SwitchRightTab(RightTab tab) {
     this->rightTab1Text->SetColor(isArtist ? CLR_WHITE : CLR_GRAY);
     this->rightTab2Text->SetColor(isArtist ? CLR_GRAY : CLR_WHITE);
     this->rightTabIndicator->SetX(isArtist ? RIGHT_X : RIGHT_X + RIGHT_TAB_W);
-    this->artistPlaceholder->SetVisible(isArtist);
+    this->rightArtistImgBg->SetVisible(isArtist);
+    this->rightArtistImg->SetVisible(isArtist);
+    this->rightArtistName->SetVisible(isArtist);
+    this->rightArtistGenres->SetVisible(isArtist);
+    this->rightArtistFollowers->SetVisible(isArtist);
+    this->rightArtistPopularity->SetVisible(isArtist);
+    this->rightAlbumSep->SetVisible(isArtist);
+    this->rightAlbumImgBg->SetVisible(isArtist);
+    this->rightAlbumImg->SetVisible(isArtist);
+    this->rightAlbumHeader->SetVisible(isArtist);
+    this->rightAlbumName->SetVisible(isArtist);
+    this->rightAlbumTypeYear->SetVisible(isArtist);
+    this->rightAlbumTracks->SetVisible(isArtist);
     this->queuePlaceholder->SetVisible(!isArtist);
 }
 
@@ -381,6 +502,59 @@ void MainLayout::SetAlbumArt(pu::sdl2::TextureHandle::Ref handle) {
     // SetImage resets render dimensions to the texture's natural size — re-apply explicitly.
     this->albumArtImage->SetWidth(ART_SIZE);
     this->albumArtImage->SetHeight(ART_SIZE);
+}
+
+static std::string formatFollowers(long n) {
+    char buf[32];
+    if (n >= 1000000)
+        snprintf(buf, sizeof(buf), "%.1fM seguidores", (float)n / 1000000.0f);
+    else if (n >= 1000)
+        snprintf(buf, sizeof(buf), "%.0fK seguidores", (float)n / 1000.0f);
+    else
+        snprintf(buf, sizeof(buf), "%ld seguidores", n);
+    return buf;
+}
+
+void MainLayout::SetArtistInfo(const spotify::ArtistInfo& info) {
+    if (!info.valid) return;
+    this->rightArtistName->SetText(info.name);
+    this->rightArtistGenres->SetText(info.genres);
+    this->rightArtistFollowers->SetText(formatFollowers(info.followers));
+    char popBuf[32];
+    snprintf(popBuf, sizeof(popBuf), "Popularidad: %d / 100", info.popularity);
+    this->rightArtistPopularity->SetText(popBuf);
+}
+
+void MainLayout::SetArtistImage(pu::sdl2::TextureHandle::Ref handle) {
+    this->rightArtistImg->SetImage(handle);
+    this->rightArtistImg->SetWidth(RART_IMG_SIZE);
+    this->rightArtistImg->SetHeight(RART_IMG_SIZE);
+}
+
+static std::string formatAlbumType(const std::string& t) {
+    if (t == "album")       return "Album";
+    if (t == "single")      return "Single";
+    if (t == "compilation") return "Recopilatorio";
+    return t;
+}
+
+void MainLayout::SetAlbumThumbnail(pu::sdl2::TextureHandle::Ref handle) {
+    this->rightAlbumImg->SetImage(handle);
+    this->rightAlbumImg->SetWidth(RALBUM_IMG_SIZE);
+    this->rightAlbumImg->SetHeight(RALBUM_IMG_SIZE);
+}
+
+void MainLayout::SetAlbumInfo(const spotify::AlbumInfo& info) {
+    if (!info.valid) return;
+    this->rightAlbumName->SetText(info.name);
+    const auto year = info.releaseDate.size() >= 4 ? info.releaseDate.substr(0, 4) : info.releaseDate;
+    this->rightAlbumTypeYear->SetText(formatAlbumType(info.albumType) + " · " + year);
+    char buf[128];
+    if (info.label.empty())
+        snprintf(buf, sizeof(buf), "%d canciones", info.totalTracks);
+    else
+        snprintf(buf, sizeof(buf), "%d canciones · %s", info.totalTracks, info.label.c_str());
+    this->rightAlbumTracks->SetText(buf);
 }
 
 // =============================================================================
@@ -477,7 +651,7 @@ void MainApplication::FetchAndShowPlayerState() {
     this->mainLayout->SetTrack(player.trackName, player.artistName, player.isPlaying);
     this->mainLayout->SetDevice(player.deviceName);
 
-    // Download album art only when the track changes
+    // Download album art only when the art URL changes
     if (!player.albumImageUrl.empty() && player.albumImageUrl != this->currentAlbumUrl) {
         this->currentAlbumUrl = player.albumImageUrl;
         const auto artData = spotify::downloadAlbumArt(player.albumImageUrl);
@@ -485,7 +659,35 @@ void MainApplication::FetchAndShowPlayerState() {
             auto* rawTex = pu::ui::render::LoadImageFromBuffer(
                 static_cast<const void*>(artData.data()), artData.size());
             if (rawTex) {
-                this->mainLayout->SetAlbumArt(pu::sdl2::TextureHandle::New(rawTex));
+                auto handle = pu::sdl2::TextureHandle::New(rawTex);
+                this->mainLayout->SetAlbumArt(handle);
+                this->mainLayout->SetAlbumThumbnail(handle);
+            }
+        }
+    }
+
+    // Fetch album info only when the album ID changes (separate guard)
+    if (!player.albumId.empty() && player.albumId != this->currentAlbumId) {
+        this->currentAlbumId = player.albumId;
+        const auto albumInfo = spotify::getAlbumInfo(player.albumId, this->currentTokens.accessToken);
+        if (albumInfo.valid)
+            this->mainLayout->SetAlbumInfo(albumInfo);
+    }
+
+    // Fetch artist info only when the artist changes
+    if (!player.artistId.empty() && player.artistId != this->currentArtistId) {
+        this->currentArtistId = player.artistId;
+        const auto info = spotify::getArtistInfo(player.artistId, this->currentTokens.accessToken);
+        if (info.valid) {
+            this->mainLayout->SetArtistInfo(info);
+            if (!info.imageUrl.empty()) {
+                const auto imgData = spotify::downloadAlbumArt(info.imageUrl);
+                if (!imgData.empty()) {
+                    auto* rawTex = pu::ui::render::LoadImageFromBuffer(
+                        static_cast<const void*>(imgData.data()), imgData.size());
+                    if (rawTex)
+                        this->mainLayout->SetArtistImage(pu::sdl2::TextureHandle::New(rawTex));
+                }
             }
         }
     }
