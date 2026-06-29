@@ -132,6 +132,21 @@ static std::string jsonGetObject(const std::string& json, const std::string& key
     return json.substr(pos + 1, end - pos - 2);
 }
 
+// Returns a specific field from the first object in a JSON array for 'key'.
+static std::string jsonFirstArrayItemField(const std::string& json,
+                                           const std::string& arrayKey,
+                                           const std::string& fieldKey,
+                                           size_t offset = 0) {
+    const auto pos = jsonFindValue(json, arrayKey, offset);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '[') return "";
+    size_t arrStart = pos + 1;
+    while (arrStart < json.size() && json[arrStart] != '{' && json[arrStart] != ']') ++arrStart;
+    if (arrStart >= json.size() || json[arrStart] == ']') return "";
+    const auto end = jsonSkipValue(json, arrStart);
+    const auto firstObj = json.substr(arrStart + 1, end - arrStart - 2);
+    return jsonGetString(firstObj, fieldKey);
+}
+
 // Returns the "name" field of the first object in a JSON array for 'key'.
 // Searches from 'offset' so callers can skip over nested arrays with the same key name.
 static std::string jsonFirstArrayItemName(const std::string& json,
@@ -341,7 +356,14 @@ PlayerState getPlayerState(const std::string& accessToken) {
     }
     state.trackName = jsonGetStringFrom(itemObj, "name", afterArtists);
 
-    state.isPlaying = (resp.find("\"is_playing\":true") != std::string::npos);
+    // Album art: first image URL from item.album.images[]
+    const auto albumObj = jsonGetObject(itemObj, "album");
+    state.albumImageUrl = jsonFirstArrayItemField(albumObj, "images", "url");
+
+    const auto isPlayingPos = jsonFindValue(resp, "is_playing");
+    state.isPlaying = (isPlayingPos != std::string::npos &&
+                       isPlayingPos + 4 <= resp.size() &&
+                       resp.substr(isPlayingPos, 4) == "true");
     state.valid = !state.trackName.empty();
 
     char buf[256];
@@ -351,6 +373,102 @@ PlayerState getPlayerState(const std::string& accessToken) {
     debugLog(buf);
 
     return state;
+}
+
+// --- HTTP helpers for playback control ---
+
+static void httpPut(const std::string& url, const std::string& accessToken) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return;
+
+    struct curl_slist* headers = nullptr;
+    const std::string auth = "Authorization: Bearer " + accessToken;
+    headers = curl_slist_append(headers, auth.c_str());
+    headers = curl_slist_append(headers, "Content-Length: 0");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_NOBODY, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+
+    curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+}
+
+static void httpPostNoBody(const std::string& url, const std::string& accessToken) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return;
+
+    struct curl_slist* headers = nullptr;
+    const std::string auth = "Authorization: Bearer " + accessToken;
+    headers = curl_slist_append(headers, auth.c_str());
+    headers = curl_slist_append(headers, "Content-Length: 0");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "");
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, 0L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+
+    curl_easy_perform(curl);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+}
+
+// --- Playback control ---
+
+void play(const std::string& accessToken) {
+    debugLog("CTRL: play");
+    httpPut("https://api.spotify.com/v1/me/player/play", accessToken);
+}
+
+void pause(const std::string& accessToken) {
+    debugLog("CTRL: pause");
+    httpPut("https://api.spotify.com/v1/me/player/pause", accessToken);
+}
+
+void skipNext(const std::string& accessToken) {
+    debugLog("CTRL: next");
+    httpPostNoBody("https://api.spotify.com/v1/me/player/next", accessToken);
+}
+
+void skipPrevious(const std::string& accessToken) {
+    debugLog("CTRL: previous");
+    httpPostNoBody("https://api.spotify.com/v1/me/player/previous", accessToken);
+}
+
+// --- Album art download (Spotify CDN, no auth required) ---
+
+std::string downloadAlbumArt(const std::string& url) {
+    if (url.empty()) return "";
+    debugLog("ART: downloading");
+    CURL* curl = curl_easy_init();
+    if (!curl) return "";
+
+    std::string data;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+
+    const CURLcode res = curl_easy_perform(curl);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "ART: res=%d size=%d", (int)res, (int)data.size());
+    debugLog(buf);
+    curl_easy_cleanup(curl);
+    return (res == CURLE_OK) ? data : "";
 }
 
 } // namespace spotify

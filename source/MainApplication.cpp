@@ -10,9 +10,66 @@
 #include <cstdio>
 #include <ctime>
 
-// Returns the Switch's local IP, or empty string if not connected to a network.
-// Connects a UDP socket to an external address (no packet sent) so the kernel
-// fills in the local address via getsockname.
+// --- Layout constants ---
+
+static constexpr s32 SCREEN_W   = 1920;
+static constexpr s32 SCREEN_H   = 1080;
+
+static constexpr s32 SIDEBAR_W  = 250;
+static constexpr s32 CONTENT_X  = SIDEBAR_W;
+static constexpr s32 CONTENT_W  = SCREEN_W - SIDEBAR_W;
+static constexpr s32 CONTENT_CX = CONTENT_X + CONTENT_W / 2; // 1085
+
+// RIGHT_X defined early so PLAYER_CX can reference it
+static constexpr s32 RIGHT_X    = 1100;
+
+// Player block centered between sidebar and right panel left edge.
+// Vertical centering: block height = ART(520) + gap(28) + track(58) + artist+gap(90) + btn(77) = 773px
+// → ART_Y = (1080 - 773) / 2 = 154
+static constexpr s32 ART_SIZE   = 520;
+static constexpr s32 PLAYER_CX  = (SIDEBAR_W + RIGHT_X) / 2; // 675
+static constexpr s32 ART_X      = PLAYER_CX - ART_SIZE / 2;  // 415
+static constexpr s32 ART_Y      = 154;
+
+static constexpr s32 TRACK_Y    = ART_Y + ART_SIZE + 28;     // 702
+static constexpr s32 ARTIST_Y   = TRACK_Y + 58;              // 760
+
+static constexpr s32 CTRL_Y     = ARTIST_Y + 90;             // 850
+static constexpr s32 CTRL_SMALL = 70;
+static constexpr s32 CTRL_LARGE = 84;
+static constexpr s32 CTRL_GAP   = 110;
+
+static constexpr s32 PREV_CX    = PLAYER_CX - CTRL_GAP;      // 565
+static constexpr s32 PLAY_CX    = PLAYER_CX;                 // 675
+static constexpr s32 NEXT_CX    = PLAYER_CX + CTRL_GAP;      // 785
+
+static constexpr s32 TAB_H      = 64;
+static constexpr s32 TAB1_Y     = 280;
+static constexpr s32 TAB2_Y     = TAB1_Y + TAB_H + 4;        // 348
+
+// Right panel — same margin on the right as the player content has from the sidebar (165 px)
+static constexpr s32 RIGHT_MARGIN = ART_X - SIDEBAR_W;                  // 165
+static constexpr s32 RIGHT_W      = SCREEN_W - RIGHT_X - RIGHT_MARGIN;  // 655
+static constexpr s32 RIGHT_TAB_H  = 52;
+static constexpr s32 RIGHT_TAB_W  = RIGHT_W / 2;                        // 327
+
+static constexpr time_t REFRESH_INTERVAL_SECS = 5;
+
+// --- Colors ---
+
+static const pu::ui::Color CLR_BG      {  18,  18,  18, 255 };
+static const pu::ui::Color CLR_SIDEBAR {  28,  28,  28, 255 };
+static const pu::ui::Color CLR_TAB_SEL {  48,  48,  48, 255 };
+static const pu::ui::Color CLR_GREEN   {  29, 185,  84, 255 };
+static const pu::ui::Color CLR_WHITE   { 255, 255, 255, 255 };
+static const pu::ui::Color CLR_GRAY    { 150, 150, 150, 255 };
+static const pu::ui::Color CLR_HINT    {  70,  70,  70, 255 };
+static const pu::ui::Color CLR_ART_BG  {  40,  40,  40, 255 };
+static const pu::ui::Color CLR_BTN     {  55,  55,  55, 255 };
+static const pu::ui::Color CLR_SEP     {  50,  50,  50, 255 };
+
+// --- Local IP helper ---
+
 static std::string getLocalIp() {
     const int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd < 0) return "";
@@ -40,51 +97,245 @@ static std::string getLocalIp() {
     return std::string(buf);
 }
 
-// Encodes an IPv4 address for embedding in the OAuth state parameter.
-// Dots are replaced with underscores so the result is base64url-safe.
-// Example: "192.168.1.100" -> "192_168_1_100"
 static std::string encodeIp(const std::string& ip) {
     std::string out = ip;
     for (char& c : out) if (c == '.') c = '_';
     return out;
 }
 
-static constexpr time_t REFRESH_INTERVAL_SECS = 5;
+// =============================================================================
+// MainLayout
+// =============================================================================
 
-// --- MainLayout ---
+MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRightTab(RightTab::Artist) {
+    this->SetBackgroundColor(CLR_BG);
 
-MainLayout::MainLayout() : Layout::Layout() {
-    this->SetBackgroundColor(pu::ui::Color(18, 18, 18, 255));
+    // ---- Sidebar ----
 
-    auto title = pu::ui::elm::TextBlock::New(0, 120, "Spotify Switch");
-    title->SetColor(pu::ui::Color(29, 185, 84, 255));
-    title->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
-    title->SetX(960 - 180);
-    this->Add(title);
+    this->sidebarBg = pu::ui::elm::Rectangle::New(0, 0, SIDEBAR_W, SCREEN_H, CLR_SIDEBAR);
+    this->Add(this->sidebarBg);
 
-    this->statusText = pu::ui::elm::TextBlock::New(0, 300, "Iniciando...");
-    this->statusText->SetColor(pu::ui::Color(200, 200, 200, 255));
-    this->statusText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->statusText->SetX(960 - 250);
+    this->sidebarTitle = pu::ui::elm::TextBlock::New(18, 48, "Spotify Switch");
+    this->sidebarTitle->SetColor(CLR_GREEN);
+    this->sidebarTitle->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->sidebarTitle);
+
+    // Tab 1 — Reproductor (selected by default)
+    this->tab1Bg = pu::ui::elm::Rectangle::New(0, TAB1_Y, SIDEBAR_W, TAB_H, CLR_TAB_SEL);
+    this->Add(this->tab1Bg);
+    this->tab1Text = pu::ui::elm::TextBlock::New(28, TAB1_Y + 18, "Reproductor");
+    this->tab1Text->SetColor(CLR_WHITE);
+    this->tab1Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->tab1Text);
+
+    // Tab 2 — Favoritos
+    this->tab2Bg = pu::ui::elm::Rectangle::New(0, TAB2_Y, SIDEBAR_W, TAB_H, CLR_SIDEBAR);
+    this->Add(this->tab2Bg);
+    this->tab2Text = pu::ui::elm::TextBlock::New(28, TAB2_Y + 18, "Favoritos");
+    this->tab2Text->SetColor(CLR_GRAY);
+    this->tab2Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->tab2Text);
+
+    // Green selection bar on the left edge
+    this->tabIndicator = pu::ui::elm::Rectangle::New(0, TAB1_Y, 4, TAB_H, CLR_GREEN);
+    this->Add(this->tabIndicator);
+
+    // Status line (auth state) near bottom of sidebar
+    this->statusText = pu::ui::elm::TextBlock::New(12, SCREEN_H - 96, "");
+    this->statusText->SetColor(CLR_GRAY);
+    this->statusText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
     this->Add(this->statusText);
 
-    this->trackText = pu::ui::elm::TextBlock::New(200, 430, "");
-    this->trackText->SetColor(pu::ui::Color(255, 255, 255, 255));
-    this->trackText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->Add(this->trackText);
-
-    this->deviceText = pu::ui::elm::TextBlock::New(200, 510, "");
-    this->deviceText->SetColor(pu::ui::Color(150, 150, 150, 255));
+    // Device name below status
+    this->deviceText = pu::ui::elm::TextBlock::New(12, SCREEN_H - 60, "");
+    this->deviceText->SetColor(CLR_GRAY);
     this->deviceText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
     this->Add(this->deviceText);
 
-    auto hint = pu::ui::elm::TextBlock::New(960 - 120, 1030, "Pulsa + para salir");
-    hint->SetColor(pu::ui::Color(100, 100, 100, 255));
+    // Bottom hint
+    auto hint = pu::ui::elm::TextBlock::New(0, SCREEN_H - 32, "Pulsa + para salir");
+    hint->SetColor(CLR_HINT);
     hint->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    hint->SetX(SCREEN_W / 2 - 100);
     this->Add(hint);
 
+    // ---- Player tab ----
+
+    // Album art placeholder background
+    this->albumArtBg = pu::ui::elm::Rectangle::New(ART_X, ART_Y, ART_SIZE, ART_SIZE, CLR_ART_BG, 12);
+    this->Add(this->albumArtBg);
+
+    // Album art image (starts empty)
+    this->albumArtImage = pu::ui::elm::Image::New(ART_X, ART_Y, nullptr);
+    this->albumArtImage->SetWidth(ART_SIZE);
+    this->albumArtImage->SetHeight(ART_SIZE);
+    this->Add(this->albumArtImage);
+
+    // Track name
+    this->trackText = pu::ui::elm::TextBlock::New(ART_X, TRACK_Y, "");
+    this->trackText->SetColor(CLR_WHITE);
+    this->trackText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
+    this->trackText->SetClampWidth(ART_SIZE);
+    this->trackText->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->trackText->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
+    this->Add(this->trackText);
+
+    // Artist name
+    this->artistText = pu::ui::elm::TextBlock::New(ART_X, ARTIST_Y, "");
+    this->artistText->SetColor(CLR_GRAY);
+    this->artistText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->artistText->SetClampWidth(ART_SIZE);
+    this->artistText->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->artistText->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
+    this->Add(this->artistText);
+
+    // Prev button  (circle, centered at PREV_CX)
+    this->prevBtnBg = pu::ui::elm::Rectangle::New(
+        PREV_CX - CTRL_SMALL / 2, CTRL_Y, CTRL_SMALL, CTRL_SMALL, CLR_BTN, CTRL_SMALL / 2);
+    this->Add(this->prevBtnBg);
+    this->prevBtnText = pu::ui::elm::TextBlock::New(PREV_CX - 14, CTRL_Y + 21, "|<");
+    this->prevBtnText->SetColor(CLR_WHITE);
+    this->prevBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->prevBtnText);
+
+    // Play/Pause button (larger circle, centered at PLAY_CX)
+    this->playBtnBg = pu::ui::elm::Rectangle::New(
+        PLAY_CX - CTRL_LARGE / 2, CTRL_Y - (CTRL_LARGE - CTRL_SMALL) / 2,
+        CTRL_LARGE, CTRL_LARGE, CLR_GREEN, CTRL_LARGE / 2);
+    this->Add(this->playBtnBg);
+    this->playBtnText = pu::ui::elm::TextBlock::New(PLAY_CX - 9, CTRL_Y + 21, "||");
+    this->playBtnText->SetColor(CLR_WHITE);
+    this->playBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->playBtnText);
+
+    // Next button (circle, centered at NEXT_CX)
+    this->nextBtnBg = pu::ui::elm::Rectangle::New(
+        NEXT_CX - CTRL_SMALL / 2, CTRL_Y, CTRL_SMALL, CTRL_SMALL, CLR_BTN, CTRL_SMALL / 2);
+    this->Add(this->nextBtnBg);
+    this->nextBtnText = pu::ui::elm::TextBlock::New(NEXT_CX - 14, CTRL_Y + 21, ">|");
+    this->nextBtnText->SetColor(CLR_WHITE);
+    this->nextBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->nextBtnText);
+
+    // ---- Favorites tab (hidden by default) ----
+
+    this->favText = pu::ui::elm::TextBlock::New(0, SCREEN_H / 2 - 20, "Proximamente...");
+    this->favText->SetColor(CLR_GRAY);
+    this->favText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->favText->SetX(CONTENT_CX - 100);
+    this->favText->SetVisible(false);
+    this->Add(this->favText);
+
+    // ---- Right panel ----
+
+    // Thin vertical separator between player content and right panel
+    this->rightVertSep = pu::ui::elm::Rectangle::New(RIGHT_X - 1, ART_Y, 1, CTRL_Y + CTRL_LARGE - ART_Y, CLR_SEP);
+    this->Add(this->rightVertSep);
+
+    // Tab 1 background (Artista — active by default)
+    this->rightTab1Bg = pu::ui::elm::Rectangle::New(RIGHT_X, ART_Y, RIGHT_TAB_W, RIGHT_TAB_H, CLR_TAB_SEL);
+    this->Add(this->rightTab1Bg);
+
+    // Tab 2 background (Cola)
+    this->rightTab2Bg = pu::ui::elm::Rectangle::New(RIGHT_X + RIGHT_TAB_W, ART_Y, RIGHT_TAB_W, RIGHT_TAB_H, CLR_BG);
+    this->Add(this->rightTab2Bg);
+
+    // Tab texts (centered within each 410px half)
+    this->rightTab1Text = pu::ui::elm::TextBlock::New(RIGHT_X + RIGHT_TAB_W / 2 - 50, ART_Y + 13, "Artista");
+    this->rightTab1Text->SetColor(CLR_WHITE);
+    this->rightTab1Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->rightTab1Text);
+
+    this->rightTab2Text = pu::ui::elm::TextBlock::New(RIGHT_X + RIGHT_TAB_W + RIGHT_TAB_W / 2 - 28, ART_Y + 13, "Cola");
+    this->rightTab2Text->SetColor(CLR_GRAY);
+    this->rightTab2Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->rightTab2Text);
+
+    // Green underline indicator on the active tab
+    this->rightTabIndicator = pu::ui::elm::Rectangle::New(RIGHT_X, ART_Y + RIGHT_TAB_H - 3, RIGHT_TAB_W, 3, CLR_GREEN);
+    this->Add(this->rightTabIndicator);
+
+    // Horizontal separator below tab bar
+    this->rightHorizSep = pu::ui::elm::Rectangle::New(RIGHT_X, ART_Y + RIGHT_TAB_H, RIGHT_W, 1, CLR_SEP);
+    this->Add(this->rightHorizSep);
+
+    // Placeholder content (Artist tab, shown by default)
+    this->artistPlaceholder = pu::ui::elm::TextBlock::New(RIGHT_X + 255, ART_Y + RIGHT_TAB_H + 220, "[ Info del artista ]");
+    this->artistPlaceholder->SetColor(CLR_GRAY);
+    this->artistPlaceholder->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->Add(this->artistPlaceholder);
+
+    // Placeholder content (Queue tab, hidden by default)
+    this->queuePlaceholder = pu::ui::elm::TextBlock::New(RIGHT_X + 215, ART_Y + RIGHT_TAB_H + 220, "[ Cola de reproduccion ]");
+    this->queuePlaceholder->SetColor(CLR_GRAY);
+    this->queuePlaceholder->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->queuePlaceholder->SetVisible(false);
+    this->Add(this->queuePlaceholder);
+
+    // Periodic refresh via render callback
     this->AddRenderCallback([this]() { this->OnRenderCallback(); });
 }
+
+// --- Tab switching ---
+
+void MainLayout::SetPlayerTabVisible(bool visible) {
+    this->albumArtBg->SetVisible(visible);
+    this->albumArtImage->SetVisible(visible);
+    this->trackText->SetVisible(visible);
+    this->artistText->SetVisible(visible);
+    this->prevBtnBg->SetVisible(visible);
+    this->prevBtnText->SetVisible(visible);
+    this->playBtnBg->SetVisible(visible);
+    this->playBtnText->SetVisible(visible);
+    this->nextBtnBg->SetVisible(visible);
+    this->nextBtnText->SetVisible(visible);
+}
+
+void MainLayout::SetFavoritesTabVisible(bool visible) {
+    this->favText->SetVisible(visible);
+}
+
+void MainLayout::SetRightPanelVisible(bool visible) {
+    this->rightVertSep->SetVisible(visible);
+    this->rightTab1Bg->SetVisible(visible);
+    this->rightTab2Bg->SetVisible(visible);
+    this->rightTab1Text->SetVisible(visible);
+    this->rightTab2Text->SetVisible(visible);
+    this->rightTabIndicator->SetVisible(visible);
+    this->rightHorizSep->SetVisible(visible);
+    this->artistPlaceholder->SetVisible(visible && this->currentRightTab == RightTab::Artist);
+    this->queuePlaceholder->SetVisible(visible && this->currentRightTab == RightTab::Queue);
+}
+
+void MainLayout::SwitchToTab(Tab tab) {
+    this->currentTab = tab;
+    const bool isPlayer = (tab == Tab::Player);
+
+    this->tab1Bg->SetColor(isPlayer ? CLR_TAB_SEL : CLR_SIDEBAR);
+    this->tab2Bg->SetColor(isPlayer ? CLR_SIDEBAR : CLR_TAB_SEL);
+    this->tab1Text->SetColor(isPlayer ? CLR_WHITE : CLR_GRAY);
+    this->tab2Text->SetColor(isPlayer ? CLR_GRAY : CLR_WHITE);
+    this->tabIndicator->SetY(isPlayer ? TAB1_Y : TAB2_Y);
+
+    this->SetPlayerTabVisible(isPlayer);
+    this->SetFavoritesTabVisible(!isPlayer);
+    this->SetRightPanelVisible(isPlayer);
+}
+
+void MainLayout::SwitchRightTab(RightTab tab) {
+    this->currentRightTab = tab;
+    const bool isArtist = (tab == RightTab::Artist);
+
+    this->rightTab1Bg->SetColor(isArtist ? CLR_TAB_SEL : CLR_BG);
+    this->rightTab2Bg->SetColor(isArtist ? CLR_BG : CLR_TAB_SEL);
+    this->rightTab1Text->SetColor(isArtist ? CLR_WHITE : CLR_GRAY);
+    this->rightTab2Text->SetColor(isArtist ? CLR_GRAY : CLR_WHITE);
+    this->rightTabIndicator->SetX(isArtist ? RIGHT_X : RIGHT_X + RIGHT_TAB_W);
+    this->artistPlaceholder->SetVisible(isArtist);
+    this->queuePlaceholder->SetVisible(!isArtist);
+}
+
+// --- Periodic refresh ---
 
 void MainLayout::OnRenderCallback() {
     if (!this->refreshCallback) return;
@@ -96,27 +347,45 @@ void MainLayout::OnRenderCallback() {
 
 void MainLayout::SetRefreshCallback(std::function<void()> fn) {
     this->refreshCallback = std::move(fn);
-    this->lastRefresh = time(nullptr); // start the interval from now, not from 0
+    this->lastRefresh = time(nullptr);
 }
+
+// --- Content setters ---
 
 void MainLayout::SetStatus(const std::string& text) {
     this->statusText->SetText(text);
 }
 
-void MainLayout::SetTrack(const std::string& trackName, const std::string& artistName, bool isPlaying) {
-    if (trackName.empty()) {
-        this->trackText->SetText("Sin reproduccion activa");
-        return;
-    }
-    const std::string prefix = isPlaying ? "[>] " : "[||] ";
-    this->trackText->SetText(prefix + trackName + " - " + artistName);
-}
-
 void MainLayout::SetDevice(const std::string& deviceName) {
-    this->deviceText->SetText(deviceName.empty() ? "" : "Dispositivo: " + deviceName);
+    this->deviceText->SetText(deviceName.empty() ? "" : deviceName);
 }
 
-// --- MainApplication ---
+void MainLayout::UpdatePlayButton(bool isPlaying) {
+    if (isPlaying) {
+        this->playBtnText->SetText("||");
+        this->playBtnText->SetX(PLAY_CX - 9);
+    } else {
+        this->playBtnText->SetText(">");
+        this->playBtnText->SetX(PLAY_CX - 7);
+    }
+}
+
+void MainLayout::SetTrack(const std::string& trackName, const std::string& artistName, bool isPlaying) {
+    this->trackText->SetText(trackName.empty() ? "Sin reproduccion activa" : trackName);
+    this->artistText->SetText(artistName);
+    this->UpdatePlayButton(isPlaying);
+}
+
+void MainLayout::SetAlbumArt(pu::sdl2::TextureHandle::Ref handle) {
+    this->albumArtImage->SetImage(handle);
+    // SetImage resets render dimensions to the texture's natural size — re-apply explicitly.
+    this->albumArtImage->SetWidth(ART_SIZE);
+    this->albumArtImage->SetHeight(ART_SIZE);
+}
+
+// =============================================================================
+// MainApplication
+// =============================================================================
 
 void MainApplication::OnLoad() {
     this->mainLayout = MainLayout::New();
@@ -124,40 +393,61 @@ void MainApplication::OnLoad() {
     this->SetOnInput([&](const u64 keys_down, const u64 keys_up, const u64 keys_held,
                          const pu::ui::TouchPoint touch_pos) {
         (void)keys_up; (void)keys_held; (void)touch_pos;
+
         if (keys_down & HidNpadButton_Plus) {
             this->Close();
+            return;
+        }
+
+        if (!this->mainLayoutActive) return;
+
+        // L / R → sidebar tab switching
+        if (keys_down & HidNpadButton_L)
+            this->mainLayout->SwitchToTab(Tab::Player);
+        if (keys_down & HidNpadButton_R)
+            this->mainLayout->SwitchToTab(Tab::Favorites);
+        // ZL / ZR → right panel tab switching
+        if (keys_down & HidNpadButton_ZL)
+            this->mainLayout->SwitchRightTab(RightTab::Artist);
+        if (keys_down & HidNpadButton_ZR)
+            this->mainLayout->SwitchRightTab(RightTab::Queue);
+
+        // Player controls (only in Player tab)
+        if (this->mainLayout->GetCurrentTab() == Tab::Player) {
+            if (keys_down & HidNpadButton_A)
+                this->OnPlayPause();
+            if (keys_down & HidNpadButton_Left)
+                this->OnPrev();
+            if (keys_down & HidNpadButton_Right)
+                this->OnNext();
         }
     });
 
-    auto saved = TokenStorage::loadTokens();
+    const auto saved = TokenStorage::loadTokens();
     if (saved.valid) {
         this->currentTokens = saved;
-        this->mainLayout->SetStatus("Sesion iniciada con Spotify.");
+        this->mainLayoutActive = true;
+        this->mainLayout->SetStatus("Sesion iniciada.");
         this->LoadLayout(this->mainLayout);
         this->FetchAndShowPlayerState();
         this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
         return;
     }
 
-    // OAuth requires WiFi — detect local IP first
     const std::string ip = getLocalIp();
     if (ip.empty()) {
         this->mainLayout->SetStatus(
-            "Conecta la Switch a una red WiFi para iniciar sesion con Spotify.");
+            "Conecta la Switch a una red WiFi para iniciar sesion.");
         this->LoadLayout(this->mainLayout);
         return;
     }
 
-    // Embed the Switch IP in the OAuth state so the GitHub Pages relay can
-    // redirect the mobile browser back to the local server automatically.
-    // Format: "<random_base64url>.<ip_with_underscores>"
     const auto verifier     = spotify::generateCodeVerifier();
     const auto challenge    = spotify::generateCodeChallenge(verifier);
     const auto randomState  = spotify::generateState();
     const auto fullState    = randomState + "." + encodeIp(ip);
     const auto authUrl      = spotify::buildAuthUrl(challenge, fullState);
 
-    // Start local HTTP server that will receive the code from the relay redirect
     static constexpr int PORT = 8080;
     this->localServer = std::make_unique<LocalServer>(PORT);
     this->localServer->start();
@@ -178,12 +468,53 @@ void MainApplication::FetchAndShowPlayerState() {
         if (this->currentTokens.valid) TokenStorage::saveTokens(this->currentTokens);
     }
     if (!this->currentTokens.valid) {
-        this->mainLayout->SetStatus("Error al refrescar el token. Vuelve a iniciar sesion.");
+        this->mainLayout->SetStatus("Error al refrescar el token.");
         return;
     }
+
     const auto player = spotify::getPlayerState(this->currentTokens.accessToken);
+    this->isPlaying = player.isPlaying;
     this->mainLayout->SetTrack(player.trackName, player.artistName, player.isPlaying);
     this->mainLayout->SetDevice(player.deviceName);
+
+    // Download album art only when the track changes
+    if (!player.albumImageUrl.empty() && player.albumImageUrl != this->currentAlbumUrl) {
+        this->currentAlbumUrl = player.albumImageUrl;
+        const auto artData = spotify::downloadAlbumArt(player.albumImageUrl);
+        if (!artData.empty()) {
+            auto* rawTex = pu::ui::render::LoadImageFromBuffer(
+                static_cast<const void*>(artData.data()), artData.size());
+            if (rawTex) {
+                this->mainLayout->SetAlbumArt(pu::sdl2::TextureHandle::New(rawTex));
+            }
+        }
+    }
+}
+
+void MainApplication::OnPlayPause() {
+    if (this->isPlaying) {
+        spotify::pause(this->currentTokens.accessToken);
+    } else {
+        spotify::play(this->currentTokens.accessToken);
+    }
+    // Optimistic UI update — periodic refresh will confirm the real state
+    this->isPlaying = !this->isPlaying;
+    this->mainLayout->UpdatePlayButton(this->isPlaying);
+}
+
+void MainApplication::OnPrev() {
+    spotify::skipPrevious(this->currentTokens.accessToken);
+    // Brief wait then refresh so the new track info appears quickly
+    this->mainLayout->SetRefreshCallback(nullptr); // prevent double-refresh race
+    this->FetchAndShowPlayerState();
+    this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
+}
+
+void MainApplication::OnNext() {
+    spotify::skipNext(this->currentTokens.accessToken);
+    this->mainLayout->SetRefreshCallback(nullptr);
+    this->FetchAndShowPlayerState();
+    this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
 }
 
 void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
@@ -192,13 +523,12 @@ void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
         this->localServer->stop();
         this->localServer.reset();
     }
-    debugLog("APP: server stopped");
     this->currentTokens = tokens;
     TokenStorage::saveTokens(tokens);
-    debugLog("APP: tokens saved");
-    this->mainLayout->SetStatus("Sesion iniciada con Spotify. Bienvenido!");
+    this->mainLayoutActive = true;
+    this->mainLayout->SetStatus("Sesion iniciada.");
     this->LoadLayout(this->mainLayout);
     this->FetchAndShowPlayerState();
     this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
-    debugLog("APP: refresh callback registered");
+    debugLog("APP: ready");
 }

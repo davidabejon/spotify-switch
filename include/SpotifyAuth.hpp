@@ -18,6 +18,7 @@ struct PlayerState {
     std::string trackName;
     std::string artistName;
     std::string deviceName;
+    std::string albumImageUrl;
     bool isPlaying;
     bool valid;
 
@@ -31,5 +32,14 @@ std::string buildAuthUrl(const std::string& challenge, const std::string& state)
 Tokens exchangeCode(const std::string& code, const std::string& verifier);
 Tokens refreshAccessToken(const std::string& existingRefreshToken);
 PlayerState getPlayerState(const std::string& accessToken);
+
+// Album art — no auth needed (Spotify CDN)
+std::string downloadAlbumArt(const std::string& url);
+
+// Playback control
+void play(const std::string& accessToken);
+void pause(const std::string& accessToken);
+void skipNext(const std::string& accessToken);
+void skipPrevious(const std::string& accessToken);
 
 } // namespace spotify
