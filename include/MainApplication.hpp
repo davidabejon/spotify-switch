@@ -40,6 +40,8 @@ private:
 
     // Right panel
     pu::ui::elm::Rectangle::Ref rightVertSep;
+    pu::ui::elm::Rectangle::Ref rightRightBorder;
+    pu::ui::elm::Rectangle::Ref rightBottomBorder;
     pu::ui::elm::Rectangle::Ref rightTab1Bg;
     pu::ui::elm::TextBlock::Ref rightTab1Text;
     pu::ui::elm::Rectangle::Ref rightTab2Bg;

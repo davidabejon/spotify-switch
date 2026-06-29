@@ -78,12 +78,13 @@ static constexpr s32 RART_GENRES_Y   = RART_NAME_Y   + 52;                      
 static constexpr s32 RART_FOLLOW_Y   = RART_GENRES_Y + 42;                         // 403
 static constexpr s32 RART_POP_Y      = RART_FOLLOW_Y + 36;                         // 439
 
-// Album info text Y (alongside the 100px thumbnail)
+// Album info text Y
 static constexpr s32 RALBUM_SEP_Y    = RART_BLOCK_Y + RART_IMG_SIZE + RFLEX_G;    // 610
-static constexpr s32 RALBUM_HDR_Y    = RALBUM_BLOCK_Y;                             // 711
-static constexpr s32 RALBUM_NAME_Y   = RALBUM_HDR_Y  + 30;                         // 741
-static constexpr s32 RALBUM_INFO1_Y  = RALBUM_NAME_Y + 36;                         // 777
-static constexpr s32 RALBUM_INFO2_Y  = RALBUM_INFO1_Y + 30;                        // 807
+static constexpr s32 RALBUM_IMG_Y    = RALBUM_BLOCK_Y + 24;                        // 735  (image starts below label)
+static constexpr s32 RALBUM_HDR_Y    = RALBUM_BLOCK_Y - 8;                         // 703  (label a few px above image gap)
+static constexpr s32 RALBUM_NAME_Y   = RALBUM_IMG_Y;                               // 735  (title aligned with image top)
+static constexpr s32 RALBUM_INFO1_Y  = RALBUM_NAME_Y + 36;                         // 771
+static constexpr s32 RALBUM_INFO2_Y  = RALBUM_INFO1_Y + 30;                        // 801
 
 static constexpr time_t REFRESH_INTERVAL_SECS = 5;
 
@@ -260,9 +261,15 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
 
     // ---- Right panel ----
 
-    // Thin vertical separator between player content and right panel
-    this->rightVertSep = pu::ui::elm::Rectangle::New(RIGHT_X - 1, ART_Y, 1, CTRL_Y + CTRL_LARGE - ART_Y, CLR_SEP);
+    // Borders around the right panel (left, right, bottom)
+    this->rightVertSep = pu::ui::elm::Rectangle::New(RIGHT_X - 1, ART_Y, 1, CTRL_Y + CTRL_LARGE - ART_Y + 1, CLR_SEP);
     this->Add(this->rightVertSep);
+
+    this->rightRightBorder = pu::ui::elm::Rectangle::New(RIGHT_X + RIGHT_W, ART_Y, 1, CTRL_Y + CTRL_LARGE - ART_Y + 1, CLR_SEP);
+    this->Add(this->rightRightBorder);
+
+    this->rightBottomBorder = pu::ui::elm::Rectangle::New(RIGHT_X - 1, CTRL_Y + CTRL_LARGE, RIGHT_W + 2, 1, CLR_SEP);
+    this->Add(this->rightBottomBorder);
 
     // Tab 1 background (Artista — active by default)
     this->rightTab1Bg = pu::ui::elm::Rectangle::New(RIGHT_X, ART_Y, RIGHT_TAB_W, RIGHT_TAB_H, CLR_TAB_SEL);
@@ -330,16 +337,16 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->rightAlbumSep = pu::ui::elm::Rectangle::New(RART_IMG_X, RALBUM_SEP_Y, RALBUM_FULL_W, 1, CLR_SEP);
     this->Add(this->rightAlbumSep);
 
-    this->rightAlbumImgBg = pu::ui::elm::Rectangle::New(RART_IMG_X, RALBUM_BLOCK_Y, RALBUM_IMG_SIZE, RALBUM_IMG_SIZE, CLR_ART_BG, 6);
+    this->rightAlbumImgBg = pu::ui::elm::Rectangle::New(RART_IMG_X, RALBUM_IMG_Y, RALBUM_IMG_SIZE, RALBUM_IMG_SIZE, CLR_ART_BG, 6);
     this->Add(this->rightAlbumImgBg);
 
-    this->rightAlbumImg = pu::ui::elm::Image::New(RART_IMG_X, RALBUM_BLOCK_Y, nullptr);
+    this->rightAlbumImg = pu::ui::elm::Image::New(RART_IMG_X, RALBUM_IMG_Y, nullptr);
     this->rightAlbumImg->SetWidth(RALBUM_IMG_SIZE);
     this->rightAlbumImg->SetHeight(RALBUM_IMG_SIZE);
     this->Add(this->rightAlbumImg);
 
-    this->rightAlbumHeader = pu::ui::elm::TextBlock::New(RALBUM_TEXT_X, RALBUM_HDR_Y, "ALBUM");
-    this->rightAlbumHeader->SetColor(CLR_HINT);
+    this->rightAlbumHeader = pu::ui::elm::TextBlock::New(RART_IMG_X, RALBUM_HDR_Y, "ALBUM");
+    this->rightAlbumHeader->SetColor(CLR_GRAY);
     this->rightAlbumHeader->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
     this->Add(this->rightAlbumHeader);
 
@@ -413,6 +420,8 @@ void MainLayout::SetFavoritesTabVisible(bool visible) {
 
 void MainLayout::SetRightPanelVisible(bool visible) {
     this->rightVertSep->SetVisible(visible);
+    this->rightRightBorder->SetVisible(visible);
+    this->rightBottomBorder->SetVisible(visible);
     this->rightTab1Bg->SetVisible(visible);
     this->rightTab2Bg->SetVisible(visible);
     this->rightTab1Text->SetVisible(visible);
