@@ -209,7 +209,7 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->trackText->SetColor(CLR_WHITE);
     this->trackText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
     this->trackText->SetClampWidth(ART_SIZE);
-    this->trackText->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->trackText->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps / 3);
     this->trackText->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->trackText);
 
@@ -218,7 +218,7 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->artistText->SetColor(CLR_GRAY);
     this->artistText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->artistText->SetClampWidth(ART_SIZE);
-    this->artistText->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->artistText->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps / 3);
     this->artistText->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->artistText);
 
@@ -311,7 +311,7 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->rightArtistName->SetColor(CLR_WHITE);
     this->rightArtistName->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
     this->rightArtistName->SetClampWidth(RART_INFO_W);
-    this->rightArtistName->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->rightArtistName->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps / 3);
     this->rightArtistName->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->rightArtistName);
 
@@ -319,7 +319,7 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->rightArtistGenres->SetColor(CLR_GRAY);
     this->rightArtistGenres->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->rightArtistGenres->SetClampWidth(RART_INFO_W);
-    this->rightArtistGenres->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->rightArtistGenres->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps / 3);
     this->rightArtistGenres->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->rightArtistGenres);
 
@@ -354,7 +354,7 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->rightAlbumName->SetColor(CLR_WHITE);
     this->rightAlbumName->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->rightAlbumName->SetClampWidth(RALBUM_TEXT_W);
-    this->rightAlbumName->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps);
+    this->rightAlbumName->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps / 3);
     this->rightAlbumName->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->rightAlbumName);
 
