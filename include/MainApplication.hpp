@@ -1,36 +1,28 @@
-
 #pragma once
-
-// Include Plutonium's main header
 #include <pu/Plutonium>
+#include <SpotifyAuth.hpp>
 
-// Define your main layout as a class inheriting from pu::Layout
-class CustomLayout : public pu::ui::Layout {
-    private:
+// Shown after successful login
+class MainLayout : public pu::ui::Layout {
+private:
+    pu::ui::elm::TextBlock::Ref statusText;
 
-        // An easy way to keep objects is to have them as private members
-        // Using ::Ref (of a Plutonium built-in object or any class having PU_SMART_CTOR) is an alias to a shared_ptr of the instance.
-        pu::ui::elm::TextBlock::Ref helloText;
+public:
+    MainLayout();
+    PU_SMART_CTOR(MainLayout)
 
-    public:
-
-        CustomLayout();
-
-        // Have ::Ref alias and ::New() static constructor
-        PU_SMART_CTOR(CustomLayout)
+    void SetStatus(const std::string& text);
 };
 
-// Define your application (can't instantiate base class, so need to make a derived one)
 class MainApplication : public pu::ui::Application {
-    private:
+private:
+    MainLayout::Ref mainLayout;
+    pu::ui::Layout::Ref loginLayout; // holds LoginLayout by base pointer
 
-        // Layout instance
-        CustomLayout::Ref layout;
-    
-    public:
-        using Application::Application;
-        PU_SMART_CTOR(MainApplication)
+public:
+    using Application::Application;
+    PU_SMART_CTOR(MainApplication)
 
-        // We need to define this, and use it to initialize everything
-        void OnLoad() override;
+    void OnLoad() override;
+    void OnLoginSuccess(const spotify::Tokens& tokens);
 };
