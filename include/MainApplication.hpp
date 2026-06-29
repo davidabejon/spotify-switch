@@ -67,9 +67,13 @@ private:
     // Queue tab content
     pu::ui::elm::TextBlock::Ref queuePlaceholder;
 
+    // No-playback overlay (shown instead of player content)
+    pu::ui::elm::TextBlock::Ref noPlaybackText;
+
     // State
     Tab currentTab;
     RightTab currentRightTab;
+    bool playbackActive = true;
     std::function<void()> refreshCallback;
     time_t lastRefresh = 0;
 
@@ -91,8 +95,10 @@ public:
     void SetArtistImage(pu::sdl2::TextureHandle::Ref handle);
     void SetAlbumInfo(const spotify::AlbumInfo& info);
     void SetAlbumThumbnail(pu::sdl2::TextureHandle::Ref handle);
+    void SetPlaybackActive(bool active);
     void SwitchToTab(Tab tab);
     Tab GetCurrentTab() const { return this->currentTab; }
+    bool GetPlaybackActive() const { return this->playbackActive; }
     void SwitchRightTab(RightTab tab);
     RightTab GetCurrentRightTab() const { return this->currentRightTab; }
     void SetRefreshCallback(std::function<void()> fn);

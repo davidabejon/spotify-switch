@@ -368,6 +368,14 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->queuePlaceholder->SetVisible(false);
     this->Add(this->queuePlaceholder);
 
+    // No-playback overlay — shown only when there is no active playback
+    this->noPlaybackText = pu::ui::elm::TextBlock::New(
+        PLAYER_CX - 290, SCREEN_H / 2 - 20, "No hay reproduccion activa");
+    this->noPlaybackText->SetColor(CLR_GRAY);
+    this->noPlaybackText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
+    this->noPlaybackText->SetVisible(false);
+    this->Add(this->noPlaybackText);
+
     // Periodic refresh via render callback
     this->AddRenderCallback([this]() { this->OnRenderCallback(); });
 }
@@ -375,16 +383,28 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
 // --- Tab switching ---
 
 void MainLayout::SetPlayerTabVisible(bool visible) {
-    this->albumArtBg->SetVisible(visible);
-    this->albumArtImage->SetVisible(visible);
-    this->trackText->SetVisible(visible);
-    this->artistText->SetVisible(visible);
-    this->prevBtnBg->SetVisible(visible);
-    this->prevBtnText->SetVisible(visible);
-    this->playBtnBg->SetVisible(visible);
-    this->playBtnText->SetVisible(visible);
-    this->nextBtnBg->SetVisible(visible);
-    this->nextBtnText->SetVisible(visible);
+    const bool showContent  = visible && this->playbackActive;
+    const bool showNoPlay   = visible && !this->playbackActive;
+    this->albumArtBg->SetVisible(showContent);
+    this->albumArtImage->SetVisible(showContent);
+    this->trackText->SetVisible(showContent);
+    this->artistText->SetVisible(showContent);
+    this->prevBtnBg->SetVisible(showContent);
+    this->prevBtnText->SetVisible(showContent);
+    this->playBtnBg->SetVisible(showContent);
+    this->playBtnText->SetVisible(showContent);
+    this->nextBtnBg->SetVisible(showContent);
+    this->nextBtnText->SetVisible(showContent);
+    this->noPlaybackText->SetVisible(showNoPlay);
+}
+
+void MainLayout::SetPlaybackActive(bool active) {
+    this->playbackActive = active;
+    if (this->currentTab == Tab::Player)
+        this->SetPlayerTabVisible(true);
+    // Right panel only makes sense when there is active playback
+    if (this->currentTab == Tab::Player)
+        this->SetRightPanelVisible(active);
 }
 
 void MainLayout::SetFavoritesTabVisible(bool visible) {
@@ -428,7 +448,7 @@ void MainLayout::SwitchToTab(Tab tab) {
 
     this->SetPlayerTabVisible(isPlayer);
     this->SetFavoritesTabVisible(!isPlayer);
-    this->SetRightPanelVisible(isPlayer);
+    this->SetRightPanelVisible(isPlayer && this->playbackActive);
 }
 
 void MainLayout::SwitchRightTab(RightTab tab) {
@@ -580,11 +600,13 @@ void MainApplication::OnLoad() {
             this->mainLayout->SwitchToTab(Tab::Player);
         if (keys_down & HidNpadButton_R)
             this->mainLayout->SwitchToTab(Tab::Favorites);
-        // ZL / ZR → right panel tab switching
-        if (keys_down & HidNpadButton_ZL)
-            this->mainLayout->SwitchRightTab(RightTab::Artist);
-        if (keys_down & HidNpadButton_ZR)
-            this->mainLayout->SwitchRightTab(RightTab::Queue);
+        // ZL / ZR → right panel tab switching (only when there is active playback)
+        if (this->mainLayout->GetPlaybackActive()) {
+            if (keys_down & HidNpadButton_ZL)
+                this->mainLayout->SwitchRightTab(RightTab::Artist);
+            if (keys_down & HidNpadButton_ZR)
+                this->mainLayout->SwitchRightTab(RightTab::Queue);
+        }
 
         // Player controls (only in Player tab)
         if (this->mainLayout->GetCurrentTab() == Tab::Player) {
@@ -647,6 +669,13 @@ void MainApplication::FetchAndShowPlayerState() {
     }
 
     const auto player = spotify::getPlayerState(this->currentTokens.accessToken);
+    this->mainLayout->SetPlaybackActive(player.valid);
+
+    if (!player.valid) {
+        this->isPlaying = false;
+        return;
+    }
+
     this->isPlaying = player.isPlaying;
     this->mainLayout->SetTrack(player.trackName, player.artistName, player.isPlaying);
     this->mainLayout->SetDevice(player.deviceName);
