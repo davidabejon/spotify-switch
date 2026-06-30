@@ -73,8 +73,12 @@ private:
     pu::ui::elm::TextBlock::Ref rightAlbumTypeYear;
     pu::ui::elm::TextBlock::Ref rightAlbumTracks;
 
-    // Queue tab content
-    pu::ui::elm::TextBlock::Ref queuePlaceholder;
+    // Queue tab content (5 cards: [0]=currently playing green bg, [1..4]=next)
+    pu::ui::elm::Rectangle::Ref queueCardBg[5];
+    pu::ui::elm::Rectangle::Ref queueCardImgBg[5];
+    pu::ui::elm::Image::Ref     queueCardImg[5];
+    pu::ui::elm::TextBlock::Ref queueCardTitle[5];
+    pu::ui::elm::TextBlock::Ref queueCardArtist[5];
 
     // No-playback overlay (shown instead of player content)
     pu::ui::elm::TextBlock::Ref noPlaybackText;
@@ -107,6 +111,8 @@ public:
     void SetPlaybackActive(bool active);
     void SetUserProfile(const spotify::UserProfile& profile);
     void SetUserAvatar(pu::sdl2::TextureHandle::Ref handle);
+    void SetQueueInfo(const spotify::QueueInfo& info);
+    void SetQueueImage(int index, pu::sdl2::TextureHandle::Ref handle);
     void SwitchToTab(Tab tab);
     Tab GetCurrentTab() const { return this->currentTab; }
     bool GetPlaybackActive() const { return this->playbackActive; }
@@ -127,6 +133,7 @@ private:
     std::string currentAlbumId;
     std::string currentArtistId;
     bool userProfileFetched = false;
+    std::string currentQueueUrls[5];
 
     void FetchAndShowPlayerState();
     void FetchUserProfile();

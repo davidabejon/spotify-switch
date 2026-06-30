@@ -101,6 +101,18 @@ static constexpr s32 UCOUNTRY_Y     = UEMAIL_Y + 46;
 static constexpr s32 UPLAN_Y        = UCOUNTRY_Y + 46;
 static constexpr s32 UFOLLOWERS_Y   = UPLAN_Y + 46;
 
+// Queue tab card layout
+static constexpr s32 RQUEUE_ITEM_H   = 110;
+static constexpr s32 RQUEUE_GAP      = 14;
+static constexpr s32 RQUEUE_TOTAL_H  = 5 * RQUEUE_ITEM_H + 4 * RQUEUE_GAP;  // 606
+static constexpr s32 RQUEUE_START_Y  = RCONT_Y + (RCONT_H - RQUEUE_TOTAL_H) / 2;  // 268
+static constexpr s32 RQUEUE_CARD_X   = RIGHT_X + 10;   // 1110
+static constexpr s32 RQUEUE_CARD_W   = RIGHT_W - 20;   // 635
+static constexpr s32 RQUEUE_IMG_SIZE = 80;
+static constexpr s32 RQUEUE_IMG_X    = RQUEUE_CARD_X + 12;                          // 1122
+static constexpr s32 RQUEUE_TEXT_X   = RQUEUE_IMG_X + RQUEUE_IMG_SIZE + 14;         // 1216
+static constexpr s32 RQUEUE_TEXT_W   = RQUEUE_CARD_X + RQUEUE_CARD_W - RQUEUE_TEXT_X - 10; // ~479
+
 // --- Colors ---
 
 static const pu::ui::Color CLR_BG      {  18,  18,  18, 255 };
@@ -430,12 +442,43 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->rightAlbumTracks->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
     this->Add(this->rightAlbumTracks);
 
-    // Placeholder content (Queue tab, hidden by default)
-    this->queuePlaceholder = pu::ui::elm::TextBlock::New(RIGHT_X + 215, ART_Y + RIGHT_TAB_H + 220, "[ Cola de reproduccion ]");
-    this->queuePlaceholder->SetColor(CLR_GRAY);
-    this->queuePlaceholder->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->queuePlaceholder->SetVisible(false);
-    this->Add(this->queuePlaceholder);
+    // Queue tab content (5 cards: [0]=currently playing green bg, [1..4]=next in queue)
+    for (int i = 0; i < 5; ++i) {
+        const s32 cy = RQUEUE_START_Y + i * (RQUEUE_ITEM_H + RQUEUE_GAP);
+        const pu::ui::Color cardBgColor = (i == 0) ? CLR_GREEN : CLR_ART_BG;
+
+        this->queueCardBg[i] = pu::ui::elm::Rectangle::New(
+            RQUEUE_CARD_X, cy, RQUEUE_CARD_W, RQUEUE_ITEM_H - 2, cardBgColor, 8);
+        this->queueCardBg[i]->SetVisible(false);
+        this->Add(this->queueCardBg[i]);
+
+        this->queueCardImgBg[i] = pu::ui::elm::Rectangle::New(
+            RQUEUE_IMG_X, cy + 15, RQUEUE_IMG_SIZE, RQUEUE_IMG_SIZE, CLR_SIDEBAR, 6);
+        this->queueCardImgBg[i]->SetVisible(false);
+        this->Add(this->queueCardImgBg[i]);
+
+        this->queueCardImg[i] = pu::ui::elm::Image::New(RQUEUE_IMG_X, cy + 15, nullptr);
+        this->queueCardImg[i]->SetWidth(RQUEUE_IMG_SIZE);
+        this->queueCardImg[i]->SetHeight(RQUEUE_IMG_SIZE);
+        this->queueCardImg[i]->SetVisible(false);
+        this->Add(this->queueCardImg[i]);
+
+        this->queueCardTitle[i] = pu::ui::elm::TextBlock::New(RQUEUE_TEXT_X, cy + 22, "");
+        this->queueCardTitle[i]->SetColor(CLR_WHITE);
+        this->queueCardTitle[i]->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+        this->queueCardTitle[i]->SetClampWidth(RQUEUE_TEXT_W);
+        this->queueCardTitle[i]->SetClampSpeed(pu::ui::elm::TextBlock::DefaultClampSpeedSteps / 3);
+        this->queueCardTitle[i]->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
+        this->queueCardTitle[i]->SetVisible(false);
+        this->Add(this->queueCardTitle[i]);
+
+        this->queueCardArtist[i] = pu::ui::elm::TextBlock::New(RQUEUE_TEXT_X, cy + 58, "");
+        this->queueCardArtist[i]->SetColor(CLR_WHITE);
+        this->queueCardArtist[i]->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+        this->queueCardArtist[i]->SetClampWidth(RQUEUE_TEXT_W);
+        this->queueCardArtist[i]->SetVisible(false);
+        this->Add(this->queueCardArtist[i]);
+    }
 
     // No-playback overlay — shown only when there is no active playback
     this->noPlaybackText = pu::ui::elm::TextBlock::New(
@@ -510,7 +553,14 @@ void MainLayout::SetRightPanelVisible(bool visible) {
     this->rightAlbumName->SetVisible(showArtist);
     this->rightAlbumTypeYear->SetVisible(showArtist);
     this->rightAlbumTracks->SetVisible(showArtist);
-    this->queuePlaceholder->SetVisible(visible && this->currentRightTab == RightTab::Queue);
+    const bool showQueue = visible && this->currentRightTab == RightTab::Queue;
+    for (int i = 0; i < 5; ++i) {
+        this->queueCardBg[i]->SetVisible(showQueue);
+        this->queueCardImgBg[i]->SetVisible(showQueue);
+        this->queueCardImg[i]->SetVisible(showQueue);
+        this->queueCardTitle[i]->SetVisible(showQueue);
+        this->queueCardArtist[i]->SetVisible(showQueue);
+    }
 }
 
 void MainLayout::SwitchToTab(Tab tab) {
@@ -550,7 +600,14 @@ void MainLayout::SwitchRightTab(RightTab tab) {
     this->rightAlbumName->SetVisible(isArtist);
     this->rightAlbumTypeYear->SetVisible(isArtist);
     this->rightAlbumTracks->SetVisible(isArtist);
-    this->queuePlaceholder->SetVisible(!isArtist);
+    const bool showQueue = !isArtist;
+    for (int i = 0; i < 5; ++i) {
+        this->queueCardBg[i]->SetVisible(showQueue);
+        this->queueCardImgBg[i]->SetVisible(showQueue);
+        this->queueCardImg[i]->SetVisible(showQueue);
+        this->queueCardTitle[i]->SetVisible(showQueue);
+        this->queueCardArtist[i]->SetVisible(showQueue);
+    }
 }
 
 // --- Periodic refresh ---
@@ -674,6 +731,25 @@ void MainLayout::SetUserAvatar(pu::sdl2::TextureHandle::Ref handle) {
     this->userAvatarImg->SetImage(handle);
     this->userAvatarImg->SetWidth(UAVATAR_SIZE);
     this->userAvatarImg->SetHeight(UAVATAR_SIZE);
+}
+
+void MainLayout::SetQueueInfo(const spotify::QueueInfo& info) {
+    for (int i = 0; i < 5; ++i) {
+        if (i < info.trackCount) {
+            this->queueCardTitle[i]->SetText(info.tracks[i].name);
+            this->queueCardArtist[i]->SetText(info.tracks[i].artistName);
+        } else {
+            this->queueCardTitle[i]->SetText("");
+            this->queueCardArtist[i]->SetText("");
+        }
+    }
+}
+
+void MainLayout::SetQueueImage(int index, pu::sdl2::TextureHandle::Ref handle) {
+    if (index < 0 || index >= 5) return;
+    this->queueCardImg[index]->SetImage(handle);
+    this->queueCardImg[index]->SetWidth(RQUEUE_IMG_SIZE);
+    this->queueCardImg[index]->SetHeight(RQUEUE_IMG_SIZE);
 }
 
 // =============================================================================
@@ -838,6 +914,25 @@ void MainApplication::FetchAndShowPlayerState() {
                         static_cast<const void*>(imgData.data()), imgData.size());
                     if (rawTex)
                         this->mainLayout->SetArtistImage(pu::sdl2::TextureHandle::New(rawTex));
+                }
+            }
+        }
+    }
+
+    // Fetch queue every cycle (changes with each track skip)
+    const auto queueInfo = spotify::getQueue(this->currentTokens.accessToken);
+    if (queueInfo.valid) {
+        this->mainLayout->SetQueueInfo(queueInfo);
+        for (int i = 0; i < queueInfo.trackCount; ++i) {
+            const auto& url = queueInfo.tracks[i].imageUrl;
+            if (!url.empty() && url != this->currentQueueUrls[i]) {
+                this->currentQueueUrls[i] = url;
+                const auto imgData = spotify::downloadAlbumArt(url);
+                if (!imgData.empty()) {
+                    auto* rawTex = pu::ui::render::LoadImageFromBuffer(
+                        static_cast<const void*>(imgData.data()), imgData.size());
+                    if (rawTex)
+                        this->mainLayout->SetQueueImage(i, pu::sdl2::TextureHandle::New(rawTex));
                 }
             }
         }

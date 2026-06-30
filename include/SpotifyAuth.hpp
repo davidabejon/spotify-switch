@@ -76,6 +76,20 @@ struct UserProfile {
 
 UserProfile getUserProfile(const std::string& accessToken);
 
+struct QueueInfo {
+    struct Track {
+        std::string name;
+        std::string artistName;
+        std::string imageUrl;
+    };
+    Track tracks[5]; // [0] = currently_playing, [1..4] = queue items
+    int trackCount;
+    bool valid;
+    QueueInfo() : trackCount(0), valid(false) {}
+};
+
+QueueInfo getQueue(const std::string& accessToken);
+
 // Album art — no auth needed (Spotify CDN)
 std::string downloadAlbumArt(const std::string& url);
 

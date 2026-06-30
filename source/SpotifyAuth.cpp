@@ -185,6 +185,23 @@ static std::string jsonFirstArrayItemName(const std::string& json,
     return jsonGetString(firstObj, "name");
 }
 
+// Returns inner content of the object at 'index' in the JSON array for 'key'.
+static std::string jsonGetArrayItem(const std::string& json, const std::string& key, int index) {
+    const auto pos = jsonFindValue(json, key);
+    if (pos == std::string::npos || pos >= json.size() || json[pos] != '[') return "";
+    size_t cur = pos + 1;
+    int count = 0;
+    while (cur < json.size()) {
+        while (cur < json.size() && json[cur] != '{' && json[cur] != ']') ++cur;
+        if (cur >= json.size() || json[cur] == ']') break;
+        const auto end = jsonSkipValue(json, cur);
+        if (count == index) return json.substr(cur + 1, end - cur - 2);
+        ++count;
+        cur = end;
+    }
+    return "";
+}
+
 // --- HTTP POST to Spotify API ---
 // curl_global_init() is called once from main() before any threads start.
 // Do NOT call it again here — it is not thread-safe.
@@ -545,6 +562,53 @@ UserProfile getUserProfile(const std::string& accessToken) {
 
     profile.valid = !profile.displayName.empty();
     return profile;
+}
+
+// --- Queue ---
+
+QueueInfo getQueue(const std::string& accessToken) {
+    QueueInfo info;
+    const auto resp = httpGet("https://api.spotify.com/v1/me/player/queue", accessToken);
+    if (resp.size() < 10) return info;
+
+    // Extracts name, artistName and imageUrl from a track object inner string.
+    // Uses the afterAlbum offset pattern (same as getPlayerState) to avoid
+    // matching album-level "artists" before the track-level array.
+    auto extractTrack = [](const std::string& obj, QueueInfo::Track& t) {
+        size_t afterAlbum = 0;
+        const auto albumPos = jsonFindValue(obj, "album");
+        if (albumPos != std::string::npos && albumPos < obj.size() && obj[albumPos] == '{')
+            afterAlbum = jsonSkipValue(obj, albumPos);
+
+        t.artistName = jsonFirstArrayItemName(obj, "artists", afterAlbum);
+
+        size_t afterArtists = afterAlbum;
+        const auto artPos = jsonFindValue(obj, "artists", afterAlbum);
+        if (artPos != std::string::npos && artPos < obj.size() && obj[artPos] == '[')
+            afterArtists = jsonSkipValue(obj, artPos);
+        t.name = jsonGetStringFrom(obj, "name", afterArtists);
+
+        const auto albumObj = jsonGetObject(obj, "album");
+        t.imageUrl = jsonFirstArrayItemField(albumObj, "images", "url");
+    };
+
+    // Currently playing track
+    const auto nowObj = jsonGetObject(resp, "currently_playing");
+    if (!nowObj.empty()) {
+        extractTrack(nowObj, info.tracks[0]);
+        if (!info.tracks[0].name.empty()) info.trackCount = 1;
+    }
+
+    // Next 4 queue items
+    for (int i = 0; i < 4; ++i) {
+        const auto item = jsonGetArrayItem(resp, "queue", i);
+        if (item.empty()) break;
+        extractTrack(item, info.tracks[i + 1]);
+        info.trackCount = i + 2;
+    }
+
+    info.valid = info.trackCount > 0;
+    return info;
 }
 
 // --- Album art download (Spotify CDN, no auth required) ---
