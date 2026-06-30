@@ -83,6 +83,11 @@ private:
     // No-playback overlay (shown instead of player content)
     pu::ui::elm::TextBlock::Ref noPlaybackText;
 
+    // Audio playback bars (first queue card, animated when queue tab is visible)
+    pu::ui::elm::Rectangle::Ref bars[3];
+    float barPhase = 0.0f;
+    bool barsVisible = false;
+
     // Loading spinner (shown while waiting for next polling after a skip)
     pu::ui::elm::Rectangle::Ref spinnerBackdrop;
     pu::ui::elm::Image::Ref spinnerImg;

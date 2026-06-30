@@ -9,6 +9,7 @@
 #include <DebugLog.hpp>
 #include <cstdio>
 #include <ctime>
+#include <cmath>
 
 // --- Layout constants ---
 
@@ -113,6 +114,16 @@ static constexpr s32 RQUEUE_START_Y  = RCONT_Y + (RCONT_H - RQUEUE_TOTAL_H) / 2;
 static constexpr s32 RQUEUE_CARD_X   = RIGHT_X + 10;   // 1110
 static constexpr s32 RQUEUE_CARD_W   = RIGHT_W - 20;   // 635
 static constexpr s32 RQUEUE_IMG_SIZE = 80;
+
+// Audio bars animation (inside first queue card, right-aligned)
+static constexpr s32 BAR_W          = 8;
+static constexpr s32 BAR_GAP        = 6;
+static constexpr s32 BAR_MAX_H      = 46;
+static constexpr s32 BAR_MIN_H      = 10;
+static constexpr s32 BARS_TOTAL_W   = 3 * BAR_W + 2 * BAR_GAP;   // 36
+static constexpr s32 BARS_RIGHT_PAD = 28;
+static constexpr s32 BARS_X0        = RQUEUE_CARD_X + RQUEUE_CARD_W - BARS_RIGHT_PAD - BARS_TOTAL_W;
+static constexpr s32 CARD0_CY       = RQUEUE_START_Y + (RQUEUE_ITEM_H - 2) / 2;
 static constexpr s32 RQUEUE_IMG_X    = RQUEUE_CARD_X + 12;                          // 1122
 static constexpr s32 RQUEUE_TEXT_X   = RQUEUE_IMG_X + RQUEUE_IMG_SIZE + 14;         // 1216
 static constexpr s32 RQUEUE_TEXT_W   = RQUEUE_CARD_X + RQUEUE_CARD_W - RQUEUE_TEXT_X - 10; // ~479
@@ -485,6 +496,14 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
         this->Add(this->queueCardArtist[i]);
     }
 
+    // Audio playback bars — right side of first queue card
+    for (int j = 0; j < 3; ++j) {
+        const s32 bx = BARS_X0 + j * (BAR_W + BAR_GAP);
+        this->bars[j] = pu::ui::elm::Rectangle::New(bx, CARD0_CY - BAR_MAX_H / 2, BAR_W, BAR_MAX_H, CLR_WHITE, 2);
+        this->bars[j]->SetVisible(false);
+        this->Add(this->bars[j]);
+    }
+
     // Loading spinner — centered over album art, shown during skip pending polling
     this->spinnerBackdrop = pu::ui::elm::Rectangle::New(
         ART_X, ART_Y, ART_SIZE, ART_SIZE, CLR_SPINNER_BG, 12);
@@ -519,6 +538,20 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
         this->spinnerAngle += 4.0f;
         if (this->spinnerAngle >= 360.0f) this->spinnerAngle -= 360.0f;
         this->spinnerImg->SetRotationAngle(this->spinnerAngle);
+    });
+
+    // Audio bars animation — sine wave, 120° offset between bars
+    this->AddRenderCallback([this]() {
+        if (!this->barsVisible) return;
+        this->barPhase += 0.07f;
+        if (this->barPhase > 2.0f * static_cast<float>(M_PI)) this->barPhase -= 2.0f * static_cast<float>(M_PI);
+        constexpr float kOffset = 2.0f * static_cast<float>(M_PI) / 3.0f; // 120°
+        for (int j = 0; j < 3; ++j) {
+            const float t = (sinf(this->barPhase + j * kOffset) + 1.0f) / 2.0f;
+            const s32 h = BAR_MIN_H + static_cast<s32>((BAR_MAX_H - BAR_MIN_H) * t);
+            this->bars[j]->SetHeight(h);
+            this->bars[j]->SetY(CARD0_CY - h / 2);
+        }
     });
 }
 
@@ -593,6 +626,8 @@ void MainLayout::SetRightPanelVisible(bool visible) {
         this->queueCardTitle[i]->SetVisible(showQueue);
         this->queueCardArtist[i]->SetVisible(showQueue);
     }
+    this->barsVisible = showQueue;
+    for (int j = 0; j < 3; ++j) this->bars[j]->SetVisible(showQueue);
 }
 
 void MainLayout::SwitchToTab(Tab tab) {
@@ -640,6 +675,8 @@ void MainLayout::SwitchRightTab(RightTab tab) {
         this->queueCardTitle[i]->SetVisible(showQueue);
         this->queueCardArtist[i]->SetVisible(showQueue);
     }
+    this->barsVisible = showQueue;
+    for (int j = 0; j < 3; ++j) this->bars[j]->SetVisible(showQueue);
 }
 
 // --- Periodic refresh ---
