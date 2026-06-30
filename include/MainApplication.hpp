@@ -14,6 +14,7 @@ class MainLayout : public pu::ui::Layout {
 private:
     // Sidebar
     pu::ui::elm::Rectangle::Ref sidebarBg;
+    pu::ui::elm::Image::Ref     sidebarLogoImg;
     pu::ui::elm::TextBlock::Ref sidebarTitle;
     pu::ui::elm::Rectangle::Ref tabIndicator;
     pu::ui::elm::Rectangle::Ref tab1Bg;

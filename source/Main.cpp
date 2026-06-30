@@ -3,6 +3,7 @@
 #include <curl/curl.h>
 
 int main() {
+    romfsInit();
     socketInitializeDefault();
     // curl_global_init is not thread-safe — must be called from the main thread
     // before any secondary threads start using libcurl.
@@ -28,5 +29,6 @@ int main() {
     main->Show();
 
     socketExit();
+    romfsExit();
     return 0;
 }

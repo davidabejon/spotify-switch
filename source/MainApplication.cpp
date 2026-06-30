@@ -161,7 +161,23 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->sidebarBg = pu::ui::elm::Rectangle::New(0, 0, SIDEBAR_W, SCREEN_H, CLR_SIDEBAR);
     this->Add(this->sidebarBg);
 
-    this->sidebarTitle = pu::ui::elm::TextBlock::New(18, 48, "Spotify Switch");
+    // "Switch" at Medium font ≈ 90px wide — used only to center the group
+    static constexpr s32 LOGO_SIZE      = 48;
+    static constexpr s32 LOGO_TEXT_GAP  = 10;
+    static constexpr s32 TEXT_W_EST     = 90;
+    static constexpr s32 GROUP_W        = LOGO_SIZE + LOGO_TEXT_GAP + TEXT_W_EST;
+    static constexpr s32 LOGO_X         = (SIDEBAR_W - GROUP_W) / 2;
+    static constexpr s32 LOGO_Y         = 20;
+    static constexpr s32 TITLE_X        = LOGO_X + LOGO_SIZE + LOGO_TEXT_GAP;
+    static constexpr s32 TITLE_Y        = LOGO_Y + (LOGO_SIZE - 28) / 2; // vertically center text inside logo height
+
+    auto* logoTex = pu::ui::render::LoadImageFromFile("romfs:/spotify.png");
+    this->sidebarLogoImg = pu::ui::elm::Image::New(LOGO_X, LOGO_Y, logoTex ? pu::sdl2::TextureHandle::New(logoTex) : nullptr);
+    this->sidebarLogoImg->SetWidth(LOGO_SIZE);
+    this->sidebarLogoImg->SetHeight(LOGO_SIZE);
+    this->Add(this->sidebarLogoImg);
+
+    this->sidebarTitle = pu::ui::elm::TextBlock::New(TITLE_X, TITLE_Y, "Switch");
     this->sidebarTitle->SetColor(CLR_GREEN);
     this->sidebarTitle->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->sidebarTitle);
