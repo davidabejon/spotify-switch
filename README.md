@@ -1,5 +1,15 @@
 # spotify-switch
 
+> **DISCLAIMER**
+>
+> This app is an **unofficial, personal-use homebrew project** and is not affiliated with, endorsed by, or approved by Spotify AB.
+>
+> **What this app does NOT do:** it does not play, stream, or decode any audio; it does not extract or bypass DRM-protected content; it does not simulate or replace the official Spotify client; it does not replicate any core Spotify experience. It only reads playback metadata and sends playback-control commands through the official Spotify Web API, exactly as documented.
+>[https://developer.spotify.com/documentation/web-api](https://developer.spotify.com/documentation/web-api).
+>
+
+---
+
 A Nintendo Switch homebrew app that shows your Spotify playback in real time — album art, track info, artist details and album metadata — all from your couch.
 
 Built with [Plutonium](https://github.com/XorTroll/Plutonium) (SDL2) and the Spotify Web API.
