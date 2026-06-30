@@ -44,6 +44,10 @@ static constexpr s32 PREV_CX    = PLAYER_CX - CTRL_GAP;      // 565
 static constexpr s32 PLAY_CX    = PLAYER_CX;                 // 675
 static constexpr s32 NEXT_CX    = PLAYER_CX + CTRL_GAP;      // 785
 
+static constexpr s32 CTRL_BTN_CY   = CTRL_Y + CTRL_SMALL / 2; // shared center Y = 885
+static constexpr s32 CTRL_ICON_SM  = 38;                       // icon size in prev/next circles
+static constexpr s32 CTRL_ICON_LG  = 46;                       // icon size in play/pause circle
+
 static constexpr s32 TAB_H      = 64;
 static constexpr s32 TAB1_Y     = 280;
 static constexpr s32 TAB2_Y     = TAB1_Y + TAB_H + 4;        // 348
@@ -102,8 +106,7 @@ static constexpr s32 UAVATAR_Y      = UBLOCK_Y;
 static constexpr s32 UINFO_X        = UAVATAR_X + UAVATAR_SIZE + 60; // 630
 static constexpr s32 UNAME_Y        = UBLOCK_Y;
 static constexpr s32 UEMAIL_Y       = UNAME_Y + 68;
-static constexpr s32 UCOUNTRY_Y     = UEMAIL_Y + 46;
-static constexpr s32 UPLAN_Y        = UCOUNTRY_Y + 46;
+static constexpr s32 UPLAN_Y        = UEMAIL_Y + 46;
 static constexpr s32 UFOLLOWERS_Y   = UPLAN_Y + 46;
 
 // Queue tab card layout
@@ -279,33 +282,58 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->artistText->SetClampDelay(pu::ui::elm::TextBlock::DefaultClampStaticDelaySteps);
     this->Add(this->artistText);
 
-    // Prev button  (circle, centered at PREV_CX)
+    // Prev button (circle, centered at PREV_CX)
     this->prevBtnBg = pu::ui::elm::Rectangle::New(
         PREV_CX - CTRL_SMALL / 2, CTRL_Y, CTRL_SMALL, CTRL_SMALL, CLR_BTN, CTRL_SMALL / 2);
     this->Add(this->prevBtnBg);
-    this->prevBtnText = pu::ui::elm::TextBlock::New(PREV_CX - 14, CTRL_Y + 21, "|<");
-    this->prevBtnText->SetColor(CLR_WHITE);
-    this->prevBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->Add(this->prevBtnText);
+    {
+        auto* tex = pu::ui::render::LoadImageFromFile("romfs:/player-back.png");
+        this->prevBtnImg = pu::ui::elm::Image::New(
+            PREV_CX - CTRL_ICON_SM / 2, CTRL_BTN_CY - CTRL_ICON_SM / 2,
+            tex ? pu::sdl2::TextureHandle::New(tex) : nullptr);
+        this->prevBtnImg->SetWidth(CTRL_ICON_SM);
+        this->prevBtnImg->SetHeight(CTRL_ICON_SM);
+        this->Add(this->prevBtnImg);
+    }
 
     // Play/Pause button (larger circle, centered at PLAY_CX)
     this->playBtnBg = pu::ui::elm::Rectangle::New(
         PLAY_CX - CTRL_LARGE / 2, CTRL_Y - (CTRL_LARGE - CTRL_SMALL) / 2,
         CTRL_LARGE, CTRL_LARGE, CLR_GREEN, CTRL_LARGE / 2);
     this->Add(this->playBtnBg);
-    this->playBtnText = pu::ui::elm::TextBlock::New(PLAY_CX - 9, CTRL_Y + 21, "||");
-    this->playBtnText->SetColor(CLR_WHITE);
-    this->playBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->Add(this->playBtnText);
+    {
+        auto* tex = pu::ui::render::LoadImageFromFile("romfs:/player-play.png");
+        this->playBtnImg = pu::ui::elm::Image::New(
+            PLAY_CX - CTRL_ICON_LG / 2, CTRL_BTN_CY - CTRL_ICON_LG / 2,
+            tex ? pu::sdl2::TextureHandle::New(tex) : nullptr);
+        this->playBtnImg->SetWidth(CTRL_ICON_LG);
+        this->playBtnImg->SetHeight(CTRL_ICON_LG);
+        this->Add(this->playBtnImg);
+    }
+    {
+        auto* tex = pu::ui::render::LoadImageFromFile("romfs:/player-pause.png");
+        this->pauseBtnImg = pu::ui::elm::Image::New(
+            PLAY_CX - CTRL_ICON_LG / 2, CTRL_BTN_CY - CTRL_ICON_LG / 2,
+            tex ? pu::sdl2::TextureHandle::New(tex) : nullptr);
+        this->pauseBtnImg->SetWidth(CTRL_ICON_LG);
+        this->pauseBtnImg->SetHeight(CTRL_ICON_LG);
+        this->pauseBtnImg->SetVisible(false); // hidden until confirmed playing
+        this->Add(this->pauseBtnImg);
+    }
 
     // Next button (circle, centered at NEXT_CX)
     this->nextBtnBg = pu::ui::elm::Rectangle::New(
         NEXT_CX - CTRL_SMALL / 2, CTRL_Y, CTRL_SMALL, CTRL_SMALL, CLR_BTN, CTRL_SMALL / 2);
     this->Add(this->nextBtnBg);
-    this->nextBtnText = pu::ui::elm::TextBlock::New(NEXT_CX - 14, CTRL_Y + 21, ">|");
-    this->nextBtnText->SetColor(CLR_WHITE);
-    this->nextBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->Add(this->nextBtnText);
+    {
+        auto* tex = pu::ui::render::LoadImageFromFile("romfs:/player-forward.png");
+        this->nextBtnImg = pu::ui::elm::Image::New(
+            NEXT_CX - CTRL_ICON_SM / 2, CTRL_BTN_CY - CTRL_ICON_SM / 2,
+            tex ? pu::sdl2::TextureHandle::New(tex) : nullptr);
+        this->nextBtnImg->SetWidth(CTRL_ICON_SM);
+        this->nextBtnImg->SetHeight(CTRL_ICON_SM);
+        this->Add(this->nextBtnImg);
+    }
 
     // ---- User tab (hidden by default) ----
 
@@ -325,17 +353,18 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->userNameText->SetVisible(false);
     this->Add(this->userNameText);
 
+    // Country flag — positioned dynamically next to the username in SetUserProfile
+    this->userFlagImg = pu::ui::elm::Image::New(UINFO_X, UNAME_Y, nullptr);
+    this->userFlagImg->SetWidth(20);
+    this->userFlagImg->SetHeight(15);
+    this->userFlagImg->SetVisible(false);
+    this->Add(this->userFlagImg);
+
     this->userEmailText = pu::ui::elm::TextBlock::New(UINFO_X, UEMAIL_Y, "");
     this->userEmailText->SetColor(CLR_GRAY);
     this->userEmailText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->userEmailText->SetVisible(false);
     this->Add(this->userEmailText);
-
-    this->userCountryText = pu::ui::elm::TextBlock::New(UINFO_X, UCOUNTRY_Y, "");
-    this->userCountryText->SetColor(CLR_GRAY);
-    this->userCountryText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
-    this->userCountryText->SetVisible(false);
-    this->Add(this->userCountryText);
 
     this->userPlanText = pu::ui::elm::TextBlock::New(UINFO_X, UPLAN_Y, "");
     this->userPlanText->SetColor(CLR_GRAY);
@@ -565,11 +594,12 @@ void MainLayout::SetPlayerTabVisible(bool visible) {
     this->trackText->SetVisible(showContent);
     this->artistText->SetVisible(showContent);
     this->prevBtnBg->SetVisible(showContent);
-    this->prevBtnText->SetVisible(showContent);
+    this->prevBtnImg->SetVisible(showContent);
     this->playBtnBg->SetVisible(showContent);
-    this->playBtnText->SetVisible(showContent);
+    this->playBtnImg->SetVisible(showContent && !this->isPlayingState);
+    this->pauseBtnImg->SetVisible(showContent && this->isPlayingState);
     this->nextBtnBg->SetVisible(showContent);
-    this->nextBtnText->SetVisible(showContent);
+    this->nextBtnImg->SetVisible(showContent);
     this->spinnerBackdrop->SetVisible(showContent && this->spinnerVisible);
     this->spinnerImg->SetVisible(showContent && this->spinnerVisible);
     this->noPlaybackText->SetVisible(showNoPlay);
@@ -588,8 +618,8 @@ void MainLayout::SetUserTabVisible(bool visible) {
     this->userAvatarBg->SetVisible(visible);
     this->userAvatarImg->SetVisible(visible);
     this->userNameText->SetVisible(visible);
+    this->userFlagImg->SetVisible(visible && this->userFlagImg->IsImageValid());
     this->userEmailText->SetVisible(visible);
-    this->userCountryText->SetVisible(visible);
     this->userPlanText->SetVisible(visible);
     this->userFollowersText->SetVisible(visible);
 }
@@ -713,13 +743,10 @@ void MainLayout::SetDevice(const std::string& deviceName) {
 }
 
 void MainLayout::UpdatePlayButton(bool isPlaying) {
-    if (isPlaying) {
-        this->playBtnText->SetText("||");
-        this->playBtnText->SetX(PLAY_CX - 9);
-    } else {
-        this->playBtnText->SetText(">");
-        this->playBtnText->SetX(PLAY_CX - 7);
-    }
+    this->isPlayingState = isPlaying;
+    const bool showContent = (this->currentTab == Tab::Player) && this->playbackActive;
+    this->playBtnImg->SetVisible(showContent && !isPlaying);
+    this->pauseBtnImg->SetVisible(showContent && isPlaying);
 }
 
 void MainLayout::SetTrack(const std::string& trackName, const std::string& artistName, bool isPlaying) {
@@ -798,10 +825,21 @@ static std::string capitalizeFirst(const std::string& s) {
 void MainLayout::SetUserProfile(const spotify::UserProfile& profile) {
     if (!profile.valid) return;
     this->userNameText->SetText(profile.displayName);
+    // Scale flag to match name text height (3:2 aspect ratio covers most flags)
+    const s32 nameH = this->userNameText->GetHeight();
+    this->userFlagImg->SetWidth(nameH * 3 / 2);
+    this->userFlagImg->SetHeight(nameH);
+    this->userFlagImg->SetX(UINFO_X + this->userNameText->GetWidth() + 12);
+    this->userFlagImg->SetY(UNAME_Y);
     this->userEmailText->SetText(profile.email.empty() ? "" : profile.email);
-    this->userCountryText->SetText(profile.country.empty() ? "" : "Pais: " + profile.country);
     this->userPlanText->SetText(profile.product.empty() ? "" : "Plan: " + capitalizeFirst(profile.product));
     this->userFollowersText->SetText(formatFollowers(profile.followers));
+}
+
+void MainLayout::SetUserFlag(pu::sdl2::TextureHandle::Ref handle) {
+    this->userFlagImg->SetImage(handle);
+    if (this->currentTab == Tab::User)
+        this->userFlagImg->SetVisible(true);
 }
 
 void MainLayout::SetUserAvatar(pu::sdl2::TextureHandle::Ref handle) {
@@ -1079,6 +1117,18 @@ void MainApplication::FetchUserProfile() {
                 static_cast<const void*>(imgData.data()), imgData.size());
             if (rawTex)
                 this->mainLayout->SetUserAvatar(pu::sdl2::TextureHandle::New(rawTex));
+        }
+    }
+
+    if (!profile.country.empty()) {
+        std::string cc = profile.country;
+        for (char& c : cc) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        const auto flagData = spotify::downloadAlbumArt("https://flagcdn.com/w80/" + cc + ".png");
+        if (!flagData.empty()) {
+            auto* rawTex = pu::ui::render::LoadImageFromBuffer(
+                static_cast<const void*>(flagData.data()), flagData.size());
+            if (rawTex)
+                this->mainLayout->SetUserFlag(pu::sdl2::TextureHandle::New(rawTex));
         }
     }
 }

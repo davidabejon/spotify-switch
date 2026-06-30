@@ -30,18 +30,20 @@ private:
     pu::ui::elm::TextBlock::Ref trackText;
     pu::ui::elm::TextBlock::Ref artistText;
     pu::ui::elm::Rectangle::Ref prevBtnBg;
-    pu::ui::elm::TextBlock::Ref prevBtnText;
+    pu::ui::elm::Image::Ref     prevBtnImg;
     pu::ui::elm::Rectangle::Ref playBtnBg;
-    pu::ui::elm::TextBlock::Ref playBtnText;
+    pu::ui::elm::Image::Ref     playBtnImg;
+    pu::ui::elm::Image::Ref     pauseBtnImg;
     pu::ui::elm::Rectangle::Ref nextBtnBg;
-    pu::ui::elm::TextBlock::Ref nextBtnText;
+    pu::ui::elm::Image::Ref     nextBtnImg;
+    bool isPlayingState = false;
 
     // User tab
     pu::ui::elm::Rectangle::Ref userAvatarBg;
     pu::ui::elm::Image::Ref     userAvatarImg;
     pu::ui::elm::TextBlock::Ref userNameText;
+    pu::ui::elm::Image::Ref     userFlagImg;
     pu::ui::elm::TextBlock::Ref userEmailText;
-    pu::ui::elm::TextBlock::Ref userCountryText;
     pu::ui::elm::TextBlock::Ref userPlanText;
     pu::ui::elm::TextBlock::Ref userFollowersText;
 
@@ -121,6 +123,7 @@ public:
     void SetAlbumThumbnail(pu::sdl2::TextureHandle::Ref handle);
     void SetPlaybackActive(bool active);
     void SetUserProfile(const spotify::UserProfile& profile);
+    void SetUserFlag(pu::sdl2::TextureHandle::Ref handle);
     void SetUserAvatar(pu::sdl2::TextureHandle::Ref handle);
     void SetQueueInfo(const spotify::QueueInfo& info);
     void SetQueueImage(int index, pu::sdl2::TextureHandle::Ref handle);
