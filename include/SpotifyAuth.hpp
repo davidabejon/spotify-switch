@@ -62,6 +62,20 @@ struct AlbumInfo {
 
 AlbumInfo   getAlbumInfo(const std::string& albumId, const std::string& accessToken);
 
+struct UserProfile {
+    std::string displayName;
+    std::string email;
+    std::string country;
+    std::string product;    // "premium" | "free"
+    std::string imageUrl;
+    long followers;
+    bool valid;
+
+    UserProfile() : followers(0), valid(false) {}
+};
+
+UserProfile getUserProfile(const std::string& accessToken);
+
 // Album art — no auth needed (Spotify CDN)
 std::string downloadAlbumArt(const std::string& url);
 

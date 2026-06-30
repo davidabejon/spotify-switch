@@ -16,7 +16,9 @@ static const char REDIRECT_URI[] = "https://davidabejon.github.io/spotify-switch
 static const char SCOPES[]       =
     "user-read-playback-state "
     "user-modify-playback-state "
-    "user-read-currently-playing";
+    "user-read-currently-playing "
+    "user-read-private "
+    "user-read-email";
 
 // --- Base64url (no padding, URL-safe alphabet) ---
 
@@ -523,6 +525,26 @@ AlbumInfo getAlbumInfo(const std::string& albumId, const std::string& accessToke
     info.popularity  = (int)jsonGetLong(resp, "popularity");
     info.valid       = !info.name.empty();
     return info;
+}
+
+// --- User profile ---
+
+UserProfile getUserProfile(const std::string& accessToken) {
+    UserProfile profile;
+    const auto resp = httpGet("https://api.spotify.com/v1/me", accessToken);
+    if (resp.size() < 10) return profile;
+
+    profile.displayName = jsonGetString(resp, "display_name");
+    profile.email       = jsonGetString(resp, "email");
+    profile.country     = jsonGetString(resp, "country");
+    profile.product     = jsonGetString(resp, "product");
+    profile.imageUrl    = jsonFirstArrayItemField(resp, "images", "url");
+
+    const auto followersObj = jsonGetObject(resp, "followers");
+    profile.followers = jsonGetLong(followersObj, "total");
+
+    profile.valid = !profile.displayName.empty();
+    return profile;
 }
 
 // --- Album art download (Spotify CDN, no auth required) ---

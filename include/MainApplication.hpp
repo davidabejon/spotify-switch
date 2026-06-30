@@ -7,7 +7,7 @@
 #include <ctime>
 #include <string>
 
-enum class Tab      { Player, Favorites };
+enum class Tab      { Player, User };
 enum class RightTab  { Artist, Queue };
 
 class MainLayout : public pu::ui::Layout {
@@ -35,8 +35,14 @@ private:
     pu::ui::elm::Rectangle::Ref nextBtnBg;
     pu::ui::elm::TextBlock::Ref nextBtnText;
 
-    // Favorites tab
-    pu::ui::elm::TextBlock::Ref favText;
+    // User tab
+    pu::ui::elm::Rectangle::Ref userAvatarBg;
+    pu::ui::elm::Image::Ref     userAvatarImg;
+    pu::ui::elm::TextBlock::Ref userNameText;
+    pu::ui::elm::TextBlock::Ref userEmailText;
+    pu::ui::elm::TextBlock::Ref userCountryText;
+    pu::ui::elm::TextBlock::Ref userPlanText;
+    pu::ui::elm::TextBlock::Ref userFollowersText;
 
     // Right panel
     pu::ui::elm::Rectangle::Ref rightVertSep;
@@ -81,7 +87,7 @@ private:
 
     void OnRenderCallback();
     void SetPlayerTabVisible(bool visible);
-    void SetFavoritesTabVisible(bool visible);
+    void SetUserTabVisible(bool visible);
     void SetRightPanelVisible(bool visible);
 
 public:
@@ -98,6 +104,8 @@ public:
     void SetAlbumInfo(const spotify::AlbumInfo& info);
     void SetAlbumThumbnail(pu::sdl2::TextureHandle::Ref handle);
     void SetPlaybackActive(bool active);
+    void SetUserProfile(const spotify::UserProfile& profile);
+    void SetUserAvatar(pu::sdl2::TextureHandle::Ref handle);
     void SwitchToTab(Tab tab);
     Tab GetCurrentTab() const { return this->currentTab; }
     bool GetPlaybackActive() const { return this->playbackActive; }
@@ -117,8 +125,10 @@ private:
     std::string currentAlbumUrl;
     std::string currentAlbumId;
     std::string currentArtistId;
+    bool userProfileFetched = false;
 
     void FetchAndShowPlayerState();
+    void FetchUserProfile();
     void OnPlayPause();
     void OnPrev();
     void OnNext();

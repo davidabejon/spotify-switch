@@ -88,6 +88,19 @@ static constexpr s32 RALBUM_INFO2_Y  = RALBUM_INFO1_Y + 30;                     
 
 static constexpr time_t REFRESH_INTERVAL_SECS = 5;
 
+// --- User tab layout ---
+
+static constexpr s32 UAVATAR_SIZE   = 200;
+static constexpr s32 UBLOCK_Y       = (SCREEN_H - 250) / 2;        // 415
+static constexpr s32 UAVATAR_X      = CONTENT_X + 120;             // 370
+static constexpr s32 UAVATAR_Y      = UBLOCK_Y;
+static constexpr s32 UINFO_X        = UAVATAR_X + UAVATAR_SIZE + 60; // 630
+static constexpr s32 UNAME_Y        = UBLOCK_Y;
+static constexpr s32 UEMAIL_Y       = UNAME_Y + 68;
+static constexpr s32 UCOUNTRY_Y     = UEMAIL_Y + 46;
+static constexpr s32 UPLAN_Y        = UCOUNTRY_Y + 46;
+static constexpr s32 UFOLLOWERS_Y   = UPLAN_Y + 46;
+
 // --- Colors ---
 
 static const pu::ui::Color CLR_BG      {  18,  18,  18, 255 };
@@ -161,10 +174,10 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->tab1Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->tab1Text);
 
-    // Tab 2 — Favoritos
+    // Tab 2 — Usuario
     this->tab2Bg = pu::ui::elm::Rectangle::New(0, TAB2_Y, SIDEBAR_W, TAB_H, CLR_SIDEBAR);
     this->Add(this->tab2Bg);
-    this->tab2Text = pu::ui::elm::TextBlock::New(28, TAB2_Y + 18, "Favoritos");
+    this->tab2Text = pu::ui::elm::TextBlock::New(28, TAB2_Y + 18, "Usuario");
     this->tab2Text->SetColor(CLR_GRAY);
     this->tab2Text->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->tab2Text);
@@ -250,14 +263,47 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
     this->nextBtnText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
     this->Add(this->nextBtnText);
 
-    // ---- Favorites tab (hidden by default) ----
+    // ---- User tab (hidden by default) ----
 
-    this->favText = pu::ui::elm::TextBlock::New(0, SCREEN_H / 2 - 20, "Proximamente...");
-    this->favText->SetColor(CLR_GRAY);
-    this->favText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
-    this->favText->SetX(CONTENT_CX - 100);
-    this->favText->SetVisible(false);
-    this->Add(this->favText);
+    this->userAvatarBg = pu::ui::elm::Rectangle::New(UAVATAR_X, UAVATAR_Y, UAVATAR_SIZE, UAVATAR_SIZE, CLR_ART_BG, 10);
+    this->userAvatarBg->SetVisible(false);
+    this->Add(this->userAvatarBg);
+
+    this->userAvatarImg = pu::ui::elm::Image::New(UAVATAR_X, UAVATAR_Y, nullptr);
+    this->userAvatarImg->SetWidth(UAVATAR_SIZE);
+    this->userAvatarImg->SetHeight(UAVATAR_SIZE);
+    this->userAvatarImg->SetVisible(false);
+    this->Add(this->userAvatarImg);
+
+    this->userNameText = pu::ui::elm::TextBlock::New(UINFO_X, UNAME_Y, "");
+    this->userNameText->SetColor(CLR_WHITE);
+    this->userNameText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Large));
+    this->userNameText->SetVisible(false);
+    this->Add(this->userNameText);
+
+    this->userEmailText = pu::ui::elm::TextBlock::New(UINFO_X, UEMAIL_Y, "");
+    this->userEmailText->SetColor(CLR_GRAY);
+    this->userEmailText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Medium));
+    this->userEmailText->SetVisible(false);
+    this->Add(this->userEmailText);
+
+    this->userCountryText = pu::ui::elm::TextBlock::New(UINFO_X, UCOUNTRY_Y, "");
+    this->userCountryText->SetColor(CLR_GRAY);
+    this->userCountryText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->userCountryText->SetVisible(false);
+    this->Add(this->userCountryText);
+
+    this->userPlanText = pu::ui::elm::TextBlock::New(UINFO_X, UPLAN_Y, "");
+    this->userPlanText->SetColor(CLR_GRAY);
+    this->userPlanText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->userPlanText->SetVisible(false);
+    this->Add(this->userPlanText);
+
+    this->userFollowersText = pu::ui::elm::TextBlock::New(UINFO_X, UFOLLOWERS_Y, "");
+    this->userFollowersText->SetColor(CLR_GRAY);
+    this->userFollowersText->SetFont(pu::ui::GetDefaultFont(pu::ui::DefaultFontSize::Small));
+    this->userFollowersText->SetVisible(false);
+    this->Add(this->userFollowersText);
 
     // ---- Right panel ----
 
@@ -414,8 +460,14 @@ void MainLayout::SetPlaybackActive(bool active) {
         this->SetRightPanelVisible(active);
 }
 
-void MainLayout::SetFavoritesTabVisible(bool visible) {
-    this->favText->SetVisible(visible);
+void MainLayout::SetUserTabVisible(bool visible) {
+    this->userAvatarBg->SetVisible(visible);
+    this->userAvatarImg->SetVisible(visible);
+    this->userNameText->SetVisible(visible);
+    this->userEmailText->SetVisible(visible);
+    this->userCountryText->SetVisible(visible);
+    this->userPlanText->SetVisible(visible);
+    this->userFollowersText->SetVisible(visible);
 }
 
 void MainLayout::SetRightPanelVisible(bool visible) {
@@ -456,7 +508,7 @@ void MainLayout::SwitchToTab(Tab tab) {
     this->tabIndicator->SetY(isPlayer ? TAB1_Y : TAB2_Y);
 
     this->SetPlayerTabVisible(isPlayer);
-    this->SetFavoritesTabVisible(!isPlayer);
+    this->SetUserTabVisible(!isPlayer);
     this->SetRightPanelVisible(isPlayer && this->playbackActive);
 }
 
@@ -586,6 +638,28 @@ void MainLayout::SetAlbumInfo(const spotify::AlbumInfo& info) {
     this->rightAlbumTracks->SetText(buf);
 }
 
+static std::string capitalizeFirst(const std::string& s) {
+    if (s.empty()) return s;
+    std::string out = s;
+    out[0] = static_cast<char>(toupper(static_cast<unsigned char>(out[0])));
+    return out;
+}
+
+void MainLayout::SetUserProfile(const spotify::UserProfile& profile) {
+    if (!profile.valid) return;
+    this->userNameText->SetText(profile.displayName);
+    this->userEmailText->SetText(profile.email.empty() ? "" : profile.email);
+    this->userCountryText->SetText(profile.country.empty() ? "" : "Pais: " + profile.country);
+    this->userPlanText->SetText(profile.product.empty() ? "" : "Plan: " + capitalizeFirst(profile.product));
+    this->userFollowersText->SetText(formatFollowers(profile.followers));
+}
+
+void MainLayout::SetUserAvatar(pu::sdl2::TextureHandle::Ref handle) {
+    this->userAvatarImg->SetImage(handle);
+    this->userAvatarImg->SetWidth(UAVATAR_SIZE);
+    this->userAvatarImg->SetHeight(UAVATAR_SIZE);
+}
+
 // =============================================================================
 // MainApplication
 // =============================================================================
@@ -608,9 +682,9 @@ void MainApplication::OnLoad() {
         if (keys_down & HidNpadButton_L)
             this->mainLayout->SwitchToTab(Tab::Player);
         if (keys_down & HidNpadButton_R)
-            this->mainLayout->SwitchToTab(Tab::Favorites);
-        // ZL / ZR → right panel tab switching (only when there is active playback)
-        if (this->mainLayout->GetPlaybackActive()) {
+            this->mainLayout->SwitchToTab(Tab::User);
+        // ZL / ZR → right panel tab switching (only in Player tab with active playback)
+        if (this->mainLayout->GetCurrentTab() == Tab::Player && this->mainLayout->GetPlaybackActive()) {
             if (keys_down & HidNpadButton_ZL)
                 this->mainLayout->SwitchRightTab(RightTab::Artist);
             if (keys_down & HidNpadButton_ZR)
@@ -634,6 +708,7 @@ void MainApplication::OnLoad() {
         this->mainLayoutActive = true;
         this->mainLayout->SetStatus("Sesion iniciada.");
         this->LoadLayout(this->mainLayout);
+        this->FetchUserProfile();
         this->FetchAndShowPlayerState();
         this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
         return;
@@ -779,6 +854,26 @@ void MainApplication::OnNext() {
     this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
 }
 
+void MainApplication::FetchUserProfile() {
+    if (this->userProfileFetched) return;
+    debugLog("APP: fetching user profile");
+    const auto profile = spotify::getUserProfile(this->currentTokens.accessToken);
+    if (!profile.valid) return;
+
+    this->userProfileFetched = true;
+    this->mainLayout->SetUserProfile(profile);
+
+    if (!profile.imageUrl.empty()) {
+        const auto imgData = spotify::downloadAlbumArt(profile.imageUrl);
+        if (!imgData.empty()) {
+            auto* rawTex = pu::ui::render::LoadImageFromBuffer(
+                static_cast<const void*>(imgData.data()), imgData.size());
+            if (rawTex)
+                this->mainLayout->SetUserAvatar(pu::sdl2::TextureHandle::New(rawTex));
+        }
+    }
+}
+
 void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
     debugLog("APP: OnLoginSuccess");
     if (this->localServer) {
@@ -788,8 +883,10 @@ void MainApplication::OnLoginSuccess(const spotify::Tokens& tokens) {
     this->currentTokens = tokens;
     TokenStorage::saveTokens(tokens);
     this->mainLayoutActive = true;
+    this->userProfileFetched = false;
     this->mainLayout->SetStatus("Sesion iniciada.");
     this->LoadLayout(this->mainLayout);
+    this->FetchUserProfile();
     this->FetchAndShowPlayerState();
     this->mainLayout->SetRefreshCallback([this]() { this->FetchAndShowPlayerState(); });
     debugLog("APP: ready");
