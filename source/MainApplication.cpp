@@ -678,6 +678,28 @@ void MainApplication::FetchAndShowPlayerState() {
     }
 
     const auto player = spotify::getPlayerState(this->currentTokens.accessToken);
+
+    if (player.tokenExpired) {
+        debugLog("APP: 401 from /me/player — forcing token refresh");
+        this->currentTokens = spotify::refreshAccessToken(this->currentTokens.refreshToken);
+        if (this->currentTokens.valid) {
+            TokenStorage::saveTokens(this->currentTokens);
+            // Retry once with the new token
+            const auto retried = spotify::getPlayerState(this->currentTokens.accessToken);
+            this->mainLayout->SetPlaybackActive(retried.valid);
+            if (!retried.valid) { this->isPlaying = false; return; }
+            this->isPlaying = retried.isPlaying;
+            this->mainLayout->SetTrack(retried.trackName, retried.artistName, retried.isPlaying);
+            this->mainLayout->SetDevice(retried.deviceName);
+        } else {
+            debugLog("APP: refresh failed — forcing re-login");
+            this->currentTokens = spotify::Tokens();
+            TokenStorage::saveTokens(this->currentTokens);
+            this->mainLayout->SetStatus("Sesion expirada. Reinicia la app para volver a iniciar sesion.");
+        }
+        return;
+    }
+
     this->mainLayout->SetPlaybackActive(player.valid);
 
     if (!player.valid) {

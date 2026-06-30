@@ -220,7 +220,7 @@ static std::string httpPost(const std::string& url, const std::string& body) {
 
 // --- HTTP GET to Spotify API ---
 
-static std::string httpGet(const std::string& url, const std::string& accessToken) {
+static std::string httpGet(const std::string& url, const std::string& accessToken, long* outHttpCode = nullptr) {
     CURL* curl = curl_easy_init();
     if (!curl) { debugLog("HTTP GET: curl_easy_init returned null"); return ""; }
 
@@ -239,8 +239,12 @@ static std::string httpGet(const std::string& url, const std::string& accessToke
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
 
     const CURLcode res = curl_easy_perform(curl);
-    char buf[64];
-    snprintf(buf, sizeof(buf), "HTTP GET: res=%d len=%d", (int)res, (int)response.size());
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    if (outHttpCode) *outHttpCode = httpCode;
+
+    char buf[80];
+    snprintf(buf, sizeof(buf), "HTTP GET: res=%d http=%ld len=%d", (int)res, httpCode, (int)response.size());
     debugLog(buf);
 
     curl_slist_free_all(headers);
@@ -337,11 +341,17 @@ Tokens refreshAccessToken(const std::string& existingRefreshToken) {
 
 PlayerState getPlayerState(const std::string& accessToken) {
     debugLog("PLAYER: fetching /me/player");
-    const auto resp = httpGet("https://api.spotify.com/v1/me/player", accessToken);
+    long httpCode = 0;
+    const auto resp = httpGet("https://api.spotify.com/v1/me/player", accessToken, &httpCode);
     PlayerState state;
+    if (httpCode == 401) {
+        debugLog("PLAYER: 401 Unauthorized — token expired or invalid");
+        state.tokenExpired = true;
+        return state;
+    }
     if (resp.size() < 10) {
-        // HTTP 204 = no active device, or network error
-        debugLog("PLAYER: empty/short response (204 or error)");
+        // HTTP 204 = no active device
+        debugLog("PLAYER: 204 no active device");
         return state;
     }
 

@@ -23,8 +23,9 @@ struct PlayerState {
     std::string albumImageUrl;
     bool isPlaying;
     bool valid;
+    bool tokenExpired;
 
-    PlayerState() : isPlaying(false), valid(false) {}
+    PlayerState() : isPlaying(false), valid(false), tokenExpired(false) {}
 };
 
 struct ArtistInfo {
