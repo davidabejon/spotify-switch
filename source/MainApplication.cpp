@@ -88,6 +88,10 @@ static constexpr s32 RALBUM_INFO2_Y  = RALBUM_INFO1_Y + 30;                     
 
 static constexpr time_t REFRESH_INTERVAL_SECS = 5;
 
+static constexpr s32 SPINNER_SIZE = 128;
+static constexpr s32 SPINNER_X    = PLAYER_CX - SPINNER_SIZE / 2;
+static constexpr s32 SPINNER_Y    = ART_Y + ART_SIZE / 2 - SPINNER_SIZE / 2;
+
 // --- User tab layout ---
 
 static constexpr s32 UAVATAR_SIZE   = 200;
@@ -124,7 +128,8 @@ static const pu::ui::Color CLR_GRAY    { 150, 150, 150, 255 };
 static const pu::ui::Color CLR_HINT    {  70,  70,  70, 255 };
 static const pu::ui::Color CLR_ART_BG  {  40,  40,  40, 255 };
 static const pu::ui::Color CLR_BTN     {  55,  55,  55, 255 };
-static const pu::ui::Color CLR_SEP     {  50,  50,  50, 255 };
+static const pu::ui::Color CLR_SEP        {  50,  50,  50, 255 };
+static const pu::ui::Color CLR_SPINNER_BG {   0,   0,   0, 160 };
 
 // --- Local IP helper ---
 
@@ -480,6 +485,23 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
         this->Add(this->queueCardArtist[i]);
     }
 
+    // Loading spinner — centered over album art, shown during skip pending polling
+    this->spinnerBackdrop = pu::ui::elm::Rectangle::New(
+        ART_X, ART_Y, ART_SIZE, ART_SIZE, CLR_SPINNER_BG, 12);
+    this->spinnerBackdrop->SetVisible(false);
+    this->Add(this->spinnerBackdrop);
+
+    {
+        auto* spinTex = pu::ui::render::LoadImageFromFile("romfs:/loading.png");
+        this->spinnerImg = pu::ui::elm::Image::New(
+            SPINNER_X, SPINNER_Y,
+            spinTex ? pu::sdl2::TextureHandle::New(spinTex) : nullptr);
+        this->spinnerImg->SetWidth(SPINNER_SIZE);
+        this->spinnerImg->SetHeight(SPINNER_SIZE);
+        this->spinnerImg->SetVisible(false);
+        this->Add(this->spinnerImg);
+    }
+
     // No-playback overlay — shown only when there is no active playback
     this->noPlaybackText = pu::ui::elm::TextBlock::New(
         PLAYER_CX - 290, SCREEN_H / 2 - 20, "No hay reproduccion activa");
@@ -490,6 +512,14 @@ MainLayout::MainLayout() : Layout::Layout(), currentTab(Tab::Player), currentRig
 
     // Periodic refresh via render callback
     this->AddRenderCallback([this]() { this->OnRenderCallback(); });
+
+    // Spinner rotation — runs every frame, no-op when hidden
+    this->AddRenderCallback([this]() {
+        if (!this->spinnerVisible) return;
+        this->spinnerAngle += 4.0f;
+        if (this->spinnerAngle >= 360.0f) this->spinnerAngle -= 360.0f;
+        this->spinnerImg->SetRotationAngle(this->spinnerAngle);
+    });
 }
 
 // --- Tab switching ---
@@ -507,6 +537,8 @@ void MainLayout::SetPlayerTabVisible(bool visible) {
     this->playBtnText->SetVisible(showContent);
     this->nextBtnBg->SetVisible(showContent);
     this->nextBtnText->SetVisible(showContent);
+    this->spinnerBackdrop->SetVisible(showContent && this->spinnerVisible);
+    this->spinnerImg->SetVisible(showContent && this->spinnerVisible);
     this->noPlaybackText->SetVisible(showNoPlay);
 }
 
@@ -623,6 +655,14 @@ void MainLayout::OnRenderCallback() {
 void MainLayout::SetRefreshCallback(std::function<void()> fn) {
     this->refreshCallback = std::move(fn);
     this->lastRefresh = time(nullptr);
+}
+
+void MainLayout::SetLoadingSpinner(bool visible) {
+    this->spinnerVisible = visible;
+    if (!visible) this->spinnerAngle = 0.0f;
+    const bool canShow = (this->currentTab == Tab::Player) && this->playbackActive;
+    this->spinnerBackdrop->SetVisible(visible && canShow);
+    this->spinnerImg->SetVisible(visible && canShow);
 }
 
 // --- Content setters ---
@@ -783,8 +823,8 @@ void MainApplication::OnLoad() {
                 this->mainLayout->SwitchRightTab(RightTab::Queue);
         }
 
-        // Player controls (only in Player tab)
-        if (this->mainLayout->GetCurrentTab() == Tab::Player) {
+        // Player controls (only in Player tab, blocked while a skip is in flight)
+        if (this->mainLayout->GetCurrentTab() == Tab::Player && !this->actionsBlocked) {
             if (keys_down & HidNpadButton_A)
                 this->OnPlayPause();
             if (keys_down & HidNpadButton_Left)
@@ -841,6 +881,8 @@ void MainApplication::FetchAndShowPlayerState() {
     }
     if (!this->currentTokens.valid) {
         this->mainLayout->SetStatus("Error al refrescar el token.");
+        this->actionsBlocked = false;
+        this->mainLayout->SetLoadingSpinner(false);
         return;
     }
 
@@ -854,8 +896,9 @@ void MainApplication::FetchAndShowPlayerState() {
             // Retry once with the new token
             const auto retried = spotify::getPlayerState(this->currentTokens.accessToken);
             this->mainLayout->SetPlaybackActive(retried.valid);
-            if (!retried.valid) { this->isPlaying = false; return; }
+            if (!retried.valid) { this->isPlaying = false; this->actionsBlocked = false; this->mainLayout->SetLoadingSpinner(false); return; }
             this->isPlaying = retried.isPlaying;
+            this->currentTrackName = retried.trackName;
             this->mainLayout->SetTrack(retried.trackName, retried.artistName, retried.isPlaying);
             this->mainLayout->SetDevice(retried.deviceName);
         } else {
@@ -864,6 +907,10 @@ void MainApplication::FetchAndShowPlayerState() {
             TokenStorage::saveTokens(this->currentTokens);
             this->mainLayout->SetStatus("Sesion expirada. Reinicia la app para volver a iniciar sesion.");
         }
+        if (!this->actionsBlocked || this->currentTrackName != this->blockedFromTrackName) {
+            this->actionsBlocked = false;
+            this->mainLayout->SetLoadingSpinner(false);
+        }
         return;
     }
 
@@ -871,10 +918,14 @@ void MainApplication::FetchAndShowPlayerState() {
 
     if (!player.valid) {
         this->isPlaying = false;
+        this->actionsBlocked = false;
+        this->mainLayout->SetLoadingSpinner(false);
         return;
     }
 
     this->isPlaying = player.isPlaying;
+    const bool trackChanged = (player.trackName != this->blockedFromTrackName);
+    this->currentTrackName = player.trackName;
     this->mainLayout->SetTrack(player.trackName, player.artistName, player.isPlaying);
     this->mainLayout->SetDevice(player.deviceName);
 
@@ -937,6 +988,10 @@ void MainApplication::FetchAndShowPlayerState() {
             }
         }
     }
+    if (!this->actionsBlocked || trackChanged) {
+        this->actionsBlocked = false;
+        this->mainLayout->SetLoadingSpinner(false);
+    }
 }
 
 void MainApplication::OnPlayPause() {
@@ -951,6 +1006,9 @@ void MainApplication::OnPlayPause() {
 }
 
 void MainApplication::OnPrev() {
+    this->blockedFromTrackName = this->currentTrackName;
+    this->actionsBlocked = true;
+    this->mainLayout->SetLoadingSpinner(true);
     spotify::skipPrevious(this->currentTokens.accessToken);
     // Brief wait then refresh so the new track info appears quickly
     this->mainLayout->SetRefreshCallback(nullptr); // prevent double-refresh race
@@ -959,6 +1017,9 @@ void MainApplication::OnPrev() {
 }
 
 void MainApplication::OnNext() {
+    this->blockedFromTrackName = this->currentTrackName;
+    this->actionsBlocked = true;
+    this->mainLayout->SetLoadingSpinner(true);
     spotify::skipNext(this->currentTokens.accessToken);
     this->mainLayout->SetRefreshCallback(nullptr);
     this->FetchAndShowPlayerState();

@@ -83,6 +83,12 @@ private:
     // No-playback overlay (shown instead of player content)
     pu::ui::elm::TextBlock::Ref noPlaybackText;
 
+    // Loading spinner (shown while waiting for next polling after a skip)
+    pu::ui::elm::Rectangle::Ref spinnerBackdrop;
+    pu::ui::elm::Image::Ref spinnerImg;
+    float spinnerAngle = 0.0f;
+    bool spinnerVisible = false;
+
     // State
     Tab currentTab;
     RightTab currentRightTab;
@@ -119,6 +125,7 @@ public:
     void SwitchRightTab(RightTab tab);
     RightTab GetCurrentRightTab() const { return this->currentRightTab; }
     void SetRefreshCallback(std::function<void()> fn);
+    void SetLoadingSpinner(bool visible);
 };
 
 class MainApplication : public pu::ui::Application {
@@ -129,6 +136,9 @@ private:
     spotify::Tokens currentTokens;
     bool mainLayoutActive = false;
     bool isPlaying = false;
+    bool actionsBlocked = false;
+    std::string currentTrackName;
+    std::string blockedFromTrackName;
     std::string currentAlbumUrl;
     std::string currentAlbumId;
     std::string currentArtistId;
