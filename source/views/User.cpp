@@ -54,32 +54,63 @@ void MainLayout::SetUserAvatar(pu::sdl2::TextureHandle::Ref handle) {
 
 void MainApplication::FetchUserProfile() {
     if (this->userProfileFetched) return;
-    debugLog("APP: fetching user profile");
+    debugLog("USER: fetching user profile");
     const auto profile = spotify::getUserProfile(this->currentTokens.accessToken);
-    if (!profile.valid) return;
+    if (!profile.valid) {
+        debugLog("USER: getUserProfile returned invalid");
+        return;
+    }
+    debugLogf("USER: profile ok — name=%s email=%s country=%s product=%s followers=%ld imageUrl=%s",
+        profile.displayName.c_str(),
+        profile.email.c_str(),
+        profile.country.c_str(),
+        profile.product.c_str(),
+        profile.followers,
+        profile.imageUrl.c_str());
 
     this->userProfileFetched = true;
     this->mainLayout->SetUserProfile(profile);
 
-    if (!profile.imageUrl.empty()) {
+    if (profile.imageUrl.empty()) {
+        debugLog("USER: no avatar URL — skipping avatar download");
+    } else {
+        debugLogf("USER: downloading avatar from %s", profile.imageUrl.c_str());
         const auto imgData = spotify::downloadAlbumArt(profile.imageUrl);
-        if (!imgData.empty()) {
+        if (imgData.empty()) {
+            debugLog("USER: avatar download failed (empty data)");
+        } else {
+            debugLogf("USER: avatar download ok (%zu bytes)", imgData.size());
             auto* rawTex = pu::ui::render::LoadImageFromBuffer(
                 static_cast<const void*>(imgData.data()), imgData.size());
-            if (rawTex)
+            if (rawTex) {
                 this->mainLayout->SetUserAvatar(pu::sdl2::TextureHandle::New(rawTex));
+                debugLog("USER: avatar texture loaded");
+            } else {
+                debugLog("USER: LoadImageFromBuffer failed for avatar");
+            }
         }
     }
 
-    if (!profile.country.empty()) {
+    if (profile.country.empty()) {
+        debugLog("USER: no country — skipping flag download");
+    } else {
         std::string cc = profile.country;
         for (char& c : cc) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
-        const auto flagData = spotify::downloadAlbumArt("https://flagcdn.com/w80/" + cc + ".png");
-        if (!flagData.empty()) {
+        const std::string flagUrl = "https://flagcdn.com/w80/" + cc + ".png";
+        debugLogf("USER: downloading flag from %s", flagUrl.c_str());
+        const auto flagData = spotify::downloadAlbumArt(flagUrl);
+        if (flagData.empty()) {
+            debugLog("USER: flag download failed (empty data)");
+        } else {
+            debugLogf("USER: flag download ok (%zu bytes)", flagData.size());
             auto* rawTex = pu::ui::render::LoadImageFromBuffer(
                 static_cast<const void*>(flagData.data()), flagData.size());
-            if (rawTex)
+            if (rawTex) {
                 this->mainLayout->SetUserFlag(pu::sdl2::TextureHandle::New(rawTex));
+                debugLog("USER: flag texture loaded");
+            } else {
+                debugLog("USER: LoadImageFromBuffer failed for flag");
+            }
         }
     }
 }
