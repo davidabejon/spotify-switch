@@ -44,6 +44,10 @@ DATA		:=	data
 INCLUDES	:=	include
 ROMFS		:=	romfs
 
+APP_TITLE	:=	Spotify Switch
+APP_AUTHOR	:=	David Abejon
+APP_VERSION	:=	0.1.0
+
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
